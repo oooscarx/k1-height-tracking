@@ -3,9 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0b1114" />
+    <meta name="theme-color" content="#f3f4f2" />
     <meta name="description" content="K1 height-tracking policy running locally in MuJoCo WebAssembly." />
-    <title>K1 Height Lab</title>
+    <title>K1 Height Tracking Demo</title>
   </head>
   <body>
     <div id="app">
@@ -13,13 +13,9 @@
 
       <header class="topbar">
         <div class="identity">
-          <span class="signal" aria-hidden="true"></span>
-          <div>
-            <h1>K1 Height Lab</h1>
-            <p>MuJoCo WASM <span aria-hidden="true">/</span> ONNX policy</p>
-          </div>
+          <h1>K1 Height Tracking Demo</h1>
         </div>
-        <div class="runtime-state" aria-live="polite">
+        <div class="runtime-state sr-only" aria-live="polite">
           <span id="status-dot" class="status-dot loading"></span>
           <span id="status-text">正在载入仿真</span>
         </div>
@@ -40,14 +36,6 @@
           <span>外力</span>
           <strong id="push-force">0</strong>
           <small>N</small>
-        </div>
-        <div class="metric compact">
-          <span>策略</span>
-          <strong id="policy-rate">50 Hz</strong>
-        </div>
-        <div class="metric compact">
-          <span>物理</span>
-          <strong id="physics-rate">200 Hz</strong>
         </div>
       </aside>
 
@@ -89,7 +77,7 @@
 
       <div id="loading" class="loading-screen">
         <div class="loader-mark"><span></span></div>
-        <strong>K1</strong>
+        <strong>K1 Height Tracking Demo</strong>
         <p id="loading-stage">载入 WebAssembly</p>
         <div class="loading-bar"><span id="loading-progress"></span></div>
       </div>

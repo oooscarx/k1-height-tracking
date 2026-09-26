@@ -221,7 +221,7 @@ class K1HeightDemo {
 
     this.setLoading("就绪", 100);
     ui.statusDot.classList.remove("loading");
-    ui.statusText.textContent = `策略 ${this.manifest.checkpoint_iteration}`;
+    ui.statusText.textContent = "运行中";
     window.setTimeout(() => ui.loading.classList.add("hidden"), 220);
     requestAnimationFrame((time) => this.animate(time));
   }
@@ -310,8 +310,8 @@ class K1HeightDemo {
   }
 
   private setupRenderer(): void {
-    this.scene.background = new THREE.Color(0x0b1114);
-    this.scene.fog = new THREE.Fog(0x0b1114, 2.4, 7);
+    this.scene.background = new THREE.Color(0xf3f4f2);
+    this.scene.fog = new THREE.Fog(0xf3f4f2, 3.2, 8);
 
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -319,7 +319,7 @@ class K1HeightDemo {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.08;
     ui.viewport.appendChild(this.renderer.domElement);
 
     this.camera.up.set(0, 0, 1);
@@ -331,9 +331,9 @@ class K1HeightDemo {
     this.controls.maxDistance = 4;
     this.controls.maxPolarAngle = Math.PI * 0.49;
 
-    const hemi = new THREE.HemisphereLight(0xdde8e2, 0x25312d, 1.9);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xc8ccc7, 2.1);
     this.scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xffffff, 3.2);
+    const key = new THREE.DirectionalLight(0xfffdf8, 3.4);
     key.position.set(-1.8, -2.2, 3.2);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -342,18 +342,21 @@ class K1HeightDemo {
     key.shadow.camera.top = 2;
     key.shadow.camera.bottom = -2;
     this.scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 1.25);
+    fill.position.set(2.4, -1.4, 1.8);
+    this.scene.add(fill);
 
-    const groundMaterial = new THREE.MeshStandardMaterial({color: 0x27312e, roughness: 0.92, metalness: 0});
+    const groundMaterial = new THREE.MeshStandardMaterial({color: 0xe5e7e3, roughness: 0.94, metalness: 0});
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), groundMaterial);
     ground.receiveShadow = true;
     ground.position.z = -0.003;
     this.scene.add(ground);
-    const grid = new THREE.GridHelper(8, 32, 0x53625c, 0x34413c);
+    const grid = new THREE.GridHelper(8, 32, 0xbfc4be, 0xd5d8d4);
     grid.rotation.x = Math.PI / 2;
     grid.position.z = -0.001;
     const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
     for (const material of materials) {
-      material.opacity = 0.38;
+      material.opacity = 0.55;
       material.transparent = true;
     }
     this.scene.add(grid);
@@ -415,7 +418,7 @@ class K1HeightDemo {
     ui.pauseButton.setAttribute("aria-label", this.paused ? "继续" : "暂停");
     createIcons({icons: {Pause, Play}});
     ui.statusDot.classList.toggle("paused", this.paused);
-    ui.statusText.textContent = this.paused ? "已暂停" : `策略 ${this.manifest.checkpoint_iteration}`;
+    ui.statusText.textContent = this.paused ? "已暂停" : "运行中";
     this.lastTimestamp = performance.now();
   }
 
@@ -642,6 +645,19 @@ class K1HeightDemo {
     return geometry;
   }
 
+  private robotAppearance(meshName: string): THREE.MeshStandardMaterialParameters {
+    if (meshName === "Trunk") {
+      return {color: 0xc8c7c3, roughness: 0.36, metalness: 0.54};
+    }
+    if (meshName === "K1logo") {
+      return {color: 0x353736, roughness: 0.46, metalness: 0.24};
+    }
+    if (meshName.endsWith("Ankle_Cross")) {
+      return {color: 0xe86424, roughness: 0.4, metalness: 0.3};
+    }
+    return {color: 0x2b2d30, roughness: 0.42, metalness: 0.28};
+  }
+
   private initializeRobotScene(): void {
     for (let geomId = 0; geomId < Number(this.model.ngeom); geomId++) {
       if (Number(this.model.geom_group[geomId]) !== 1) continue;
@@ -660,10 +676,12 @@ class K1HeightDemo {
       ];
       const type = Number(this.model.geom_type[geomId]);
       const dataId = Number(this.model.geom_dataid[geomId]);
+      const meshName =
+        type === this.mujoco.mjtGeom.mjGEOM_MESH.value && dataId >= 0
+          ? this.mujoco.mj_id2name(this.model, this.mujoco.mjtObj.mjOBJ_MESH.value, dataId) ?? ""
+          : "";
       const material = new THREE.MeshStandardMaterial({
-        color: new THREE.Color(rgba[0], rgba[1], rgba[2]),
-        roughness: 0.58,
-        metalness: 0.18,
+        ...this.robotAppearance(meshName),
         transparent: rgba[3] < 0.999,
         opacity: rgba[3],
       });
