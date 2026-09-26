@@ -120,10 +120,6 @@ class K1HeightDemo {
   private mujoco: any;
   private model: any;
   private data: any;
-  private mjvOption: any;
-  private mjvPerturb: any;
-  private mjvCamera: any;
-  private mjvScene: any;
   private session!: ort.InferenceSession;
   private manifest!: PolicyManifest;
   private history!: HistoryBank;
@@ -132,7 +128,7 @@ class K1HeightDemo {
   private readonly camera = new THREE.PerspectiveCamera(42, 1, 0.02, 50);
   private readonly renderer = new THREE.WebGLRenderer({antialias: true, alpha: false});
   private readonly controls = new OrbitControls(this.camera, this.renderer.domElement);
-  private readonly meshes: THREE.Mesh[] = [];
+  private readonly renderGeoms: Array<{geomId: number; mesh: THREE.Mesh}> = [];
   private readonly geometryCache = new Map<string, THREE.BufferGeometry>();
 
   private action = new Float32Array(22);
@@ -159,15 +155,8 @@ class K1HeightDemo {
     await this.loadModelAssets();
     this.model = this.mujoco.MjModel.mj_loadXML("/working/K1_22dof.xml");
     this.data = new this.mujoco.MjData(this.model);
-    this.mjvOption = new this.mujoco.MjvOption();
-    this.mjvPerturb = new this.mujoco.MjvPerturb();
-    this.mjvCamera = new this.mujoco.MjvCamera();
-    this.mjvScene = new this.mujoco.MjvScene(this.model, 4096);
     this.trunkBodyId = this.mujoco.mj_name2id(this.model, this.mujoco.mjtObj.mjOBJ_BODY.value, "Trunk");
     this.groundGeomId = this.mujoco.mj_name2id(this.model, this.mujoco.mjtObj.mjOBJ_GEOM.value, "ground");
-    for (let index = 0; index < this.mjvOption.geomgroup.length; index++) {
-      this.mjvOption.geomgroup[index] = index === 1 ? 1 : 0;
-    }
 
     this.setLoading("载入 ONNX 策略", 64);
     this.manifest = await fetch(`${BASE_URL}policy/k1_height_policy.json`).then((response) => {
@@ -187,6 +176,7 @@ class K1HeightDemo {
     this.setupRenderer();
     this.bindControls();
     this.reset();
+    this.initializeRobotScene();
     await this.runPolicy();
 
     this.setLoading("就绪", 100);
@@ -507,10 +497,7 @@ class K1HeightDemo {
     if (this.physicsSteps % policyDivider === 0) void this.runPolicy();
   }
 
-  private geometryFor(mjvGeom: any): THREE.BufferGeometry {
-    const type = Number(mjvGeom.type);
-    const dataId = Number(mjvGeom.dataid);
-    const size = Array.from(mjvGeom.size, Number) as number[];
+  private geometryFor(type: number, dataId: number, size: number[]): THREE.BufferGeometry {
     const key = JSON.stringify([type, dataId, size]);
     const cached = this.geometryCache.get(key);
     if (cached) return cached;
@@ -530,12 +517,10 @@ class K1HeightDemo {
       geometry = new THREE.SphereGeometry(1, 24, 16);
       geometry.scale(size[0], size[1], size[2]);
     } else if (type === geom.mjGEOM_MESH.value && dataId >= 0) {
-      // mjvGeom encodes mesh data as 2 * mesh_id, plus one for convex hulls.
-      const meshId = Math.floor(dataId / 2);
-      const vertexAddress = this.model.mesh_vertadr[meshId];
-      const vertexCount = this.model.mesh_vertnum[meshId];
-      const faceAddress = this.model.mesh_faceadr[meshId];
-      const faceCount = this.model.mesh_facenum[meshId];
+      const vertexAddress = this.model.mesh_vertadr[dataId];
+      const vertexCount = this.model.mesh_vertnum[dataId];
+      const faceAddress = this.model.mesh_faceadr[dataId];
+      const faceCount = this.model.mesh_facenum[dataId];
       const positions = new Float32Array(vertexCount * 3);
       const indices = new Uint32Array(faceCount * 3);
       for (let index = 0; index < positions.length; index++) {
@@ -555,55 +540,56 @@ class K1HeightDemo {
     return geometry;
   }
 
-  private updateRobotScene(): void {
-    this.mujoco.mjv_updateScene(
-      this.model,
-      this.data,
-      this.mjvOption,
-      this.mjvPerturb,
-      this.mjvCamera,
-      this.mujoco.mjtCatBit.mjCAT_ALL.value,
-      this.mjvScene,
-    );
-    const geoms = this.mjvScene.geoms;
-    const count = Number(geoms.size());
-    for (let index = 0; index < count; index++) {
-      const mjvGeom = geoms.get(index);
-      if (!mjvGeom) continue;
-      const rgba = Array.from(mjvGeom.rgba, Number) as number[];
-      const mat = Array.from(mjvGeom.mat, Number) as number[];
-      const pos = Array.from(mjvGeom.pos, Number) as number[];
-      let mesh = this.meshes[index];
-      if (!mesh) {
-        const material = new THREE.MeshStandardMaterial({
-          color: new THREE.Color(rgba[0], rgba[1], rgba[2]),
-          roughness: 0.58,
-          metalness: 0.18,
-          transparent: rgba[3] < 0.999,
-          opacity: rgba[3],
-        });
-        mesh = new THREE.Mesh(this.geometryFor(mjvGeom), material);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.matrixAutoUpdate = false;
-        this.meshes.push(mesh);
-        this.scene.add(mesh);
-      }
+  private initializeRobotScene(): void {
+    for (let geomId = 0; geomId < Number(this.model.ngeom); geomId++) {
+      if (Number(this.model.geom_group[geomId]) !== 1) continue;
+      const rgbaOffset = geomId * 4;
+      const rgba = [
+        Number(this.model.geom_rgba[rgbaOffset]),
+        Number(this.model.geom_rgba[rgbaOffset + 1]),
+        Number(this.model.geom_rgba[rgbaOffset + 2]),
+        Number(this.model.geom_rgba[rgbaOffset + 3]),
+      ];
+      const sizeOffset = geomId * 3;
+      const size = [
+        Number(this.model.geom_size[sizeOffset]),
+        Number(this.model.geom_size[sizeOffset + 1]),
+        Number(this.model.geom_size[sizeOffset + 2]),
+      ];
+      const type = Number(this.model.geom_type[geomId]);
+      const dataId = Number(this.model.geom_dataid[geomId]);
+      const material = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(rgba[0], rgba[1], rgba[2]),
+        roughness: 0.58,
+        metalness: 0.18,
+        transparent: rgba[3] < 0.999,
+        opacity: rgba[3],
+      });
+      const mesh = new THREE.Mesh(this.geometryFor(type, dataId, size), material);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.matrixAutoUpdate = false;
       mesh.visible = rgba[3] > 0.01;
-      const material = mesh.material as THREE.MeshStandardMaterial;
-      material.color.setRGB(rgba[0], rgba[1], rgba[2]);
-      material.opacity = rgba[3];
+      this.renderGeoms.push({geomId, mesh});
+      this.scene.add(mesh);
+    }
+    this.updateRobotScene();
+  }
+
+  private updateRobotScene(): void {
+    for (const {geomId, mesh} of this.renderGeoms) {
+      const matOffset = geomId * 9;
+      const posOffset = geomId * 3;
+      const mat = this.data.geom_xmat;
+      const pos = this.data.geom_xpos;
       mesh.matrix.set(
-        mat[0], mat[3], mat[6], pos[0],
-        mat[1], mat[4], mat[7], pos[1],
-        mat[2], mat[5], mat[8], pos[2],
+        mat[matOffset], mat[matOffset + 1], mat[matOffset + 2], pos[posOffset],
+        mat[matOffset + 3], mat[matOffset + 4], mat[matOffset + 5], pos[posOffset + 1],
+        mat[matOffset + 6], mat[matOffset + 7], mat[matOffset + 8], pos[posOffset + 2],
         0, 0, 0, 1,
       );
       mesh.matrixWorldNeedsUpdate = true;
-      mjvGeom.delete();
     }
-    for (let index = count; index < this.meshes.length; index++) this.meshes[index].visible = false;
-    geoms.delete();
   }
 
   private updateTelemetry(): void {
