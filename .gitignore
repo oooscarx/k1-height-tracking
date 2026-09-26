@@ -30,6 +30,7 @@ dist/
 .vite/
 web/mujoco_wasm/public/models/
 web/mujoco_wasm/public/ort/
+web/mujoco_wasm/public/vendor/
 
 # Docker/Singularity
 **/*.sif

@@ -31,6 +31,9 @@ type PolicyManifest = {
   standing_root_height_m: number;
 };
 
+type ModelAsset = {path: string; bytes: Uint8Array};
+type ModelBundleHeader = {version: number; files: Array<{path: string; size: number}>};
+
 const BASE_URL = import.meta.env.BASE_URL;
 const $ = <T extends HTMLElement>(selector: string) => {
   const element = document.querySelector<T>(selector);
@@ -146,30 +149,67 @@ class K1HeightDemo {
   private gainScale = 1;
   private trunkBodyId = 1;
   private groundGeomId = 0;
+  private loadingProgress = 0;
 
   async initialize(): Promise<void> {
-    this.setLoading("载入 MuJoCo WebAssembly", 10);
-    this.mujoco = await loadMujoco({locateFile: () => mujocoWasmUrl});
+    this.setLoading("并行载入仿真资源", 8);
+    const mujocoPromise = this.runtimeWasmSource("mujoco.wasm")
+      .then((source) =>
+        loadMujoco(typeof source === "string" ? {locateFile: () => source} : {wasmBinary: source}).then((runtime) => {
+          this.setLoading("MuJoCo 已就绪", 36);
+          return runtime;
+        }),
+      )
+      .catch((error) => {
+        throw new Error(`MuJoCo 载入失败: ${error instanceof Error ? error.message : String(error)}`, {cause: error});
+      });
+    const modelAssetsPromise = this.fetchModelAssets()
+      .then((assets) => {
+        this.setLoading("K1 模型已就绪", 52);
+        return assets;
+      })
+      .catch((error) => {
+        throw new Error(`K1 模型载入失败: ${error instanceof Error ? error.message : String(error)}`, {cause: error});
+      });
+    const manifestPromise = this.fetchJson<PolicyManifest>(`${BASE_URL}policy/k1_height_policy.json`).catch((error) => {
+      throw new Error(`策略配置载入失败: ${error instanceof Error ? error.message : String(error)}`, {cause: error});
+    });
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.proxy = false;
+    const sessionPromise = this.runtimeWasmSource("ort-wasm-simd-threaded.wasm")
+      .then((source) => {
+        if (typeof source === "string") {
+          ort.env.wasm.wasmPaths = {wasm: source};
+        } else {
+          ort.env.wasm.wasmBinary = source;
+        }
+        return ort.InferenceSession.create(`${BASE_URL}policy/k1_height_policy.onnx`, {
+          executionProviders: ["wasm"],
+          graphOptimizationLevel: "all",
+        }).then((session) => {
+          this.setLoading("ONNX 策略已就绪", 72);
+          return session;
+        });
+      })
+      .catch((error) => {
+        throw new Error(`ONNX 策略载入失败: ${error instanceof Error ? error.message : String(error)}`, {cause: error});
+      });
 
-    this.setLoading("同步 K1 模型", 28);
-    await this.loadModelAssets();
+    const [mujoco, modelAssets, manifest, session] = await Promise.all([
+      mujocoPromise,
+      modelAssetsPromise,
+      manifestPromise,
+      sessionPromise,
+    ]);
+    this.mujoco = mujoco;
+    this.manifest = manifest;
+    this.session = session;
+    this.installModelAssets(modelAssets);
     this.model = this.mujoco.MjModel.mj_loadXML("/working/K1_22dof.xml");
     this.data = new this.mujoco.MjData(this.model);
     this.trunkBodyId = this.mujoco.mj_name2id(this.model, this.mujoco.mjtObj.mjOBJ_BODY.value, "Trunk");
     this.groundGeomId = this.mujoco.mj_name2id(this.model, this.mujoco.mjtObj.mjOBJ_GEOM.value, "ground");
 
-    this.setLoading("载入 ONNX 策略", 64);
-    this.manifest = await fetch(`${BASE_URL}policy/k1_height_policy.json`).then((response) => {
-      if (!response.ok) throw new Error(`Policy manifest: ${response.status}`);
-      return response.json() as Promise<PolicyManifest>;
-    });
-    ort.env.wasm.numThreads = 1;
-    ort.env.wasm.proxy = false;
-    ort.env.wasm.wasmPaths = {wasm: new URL(ortWasmUrl, window.location.href).href};
-    this.session = await ort.InferenceSession.create(`${BASE_URL}policy/k1_height_policy.onnx`, {
-      executionProviders: ["wasm"],
-      graphOptimizationLevel: "all",
-    });
     this.history = new HistoryBank(this.manifest);
 
     this.setLoading("初始化控制器", 88);
@@ -188,22 +228,84 @@ class K1HeightDemo {
 
   private setLoading(label: string, progress: number): void {
     ui.loadingStage.textContent = label;
-    ui.loadingProgress.style.width = `${progress}%`;
+    this.loadingProgress = Math.max(this.loadingProgress, progress);
+    ui.loadingProgress.style.width = `${this.loadingProgress}%`;
   }
 
-  private async loadModelAssets(): Promise<void> {
-    const files = await fetch(`${BASE_URL}models/K1/files.json`).then((response) => {
-      if (!response.ok) throw new Error(`Model manifest: ${response.status}`);
-      return response.json() as Promise<string[]>;
+  private async fetchBytes(url: string, attempts = 3): Promise<Uint8Array> {
+    let lastError: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 60_000);
+      try {
+        const response = await fetch(url, {signal: controller.signal});
+        if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+        return new Uint8Array(await response.arrayBuffer());
+      } catch (error) {
+        lastError = error;
+        if (attempt < attempts) await new Promise((resolve) => window.setTimeout(resolve, 600 * attempt));
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    }
+    throw new Error(`无法下载 ${url}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+  }
+
+  private async fetchJson<T>(url: string): Promise<T> {
+    const bytes = await this.fetchBytes(url);
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
+  }
+
+  private arrayBuffer(bytes: Uint8Array): ArrayBuffer {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
+    return copy.buffer;
+  }
+
+  private async gunzip(bytes: Uint8Array): Promise<Uint8Array> {
+    const stream = new Blob([this.arrayBuffer(bytes)]).stream().pipeThrough(new DecompressionStream("gzip"));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+
+  private async runtimeWasmSource(name: string): Promise<string | Uint8Array> {
+    const fallbackUrl = name === "mujoco.wasm" ? mujocoWasmUrl : ortWasmUrl;
+    if (typeof (globalThis as any).DecompressionStream !== "function") {
+      const url = new URL(fallbackUrl, location.href).href;
+      ui.loadingStage.dataset.lastUrl = url;
+      return url;
+    }
+    const compressedUrl = new URL(`${BASE_URL}vendor/${name}.gz.bin`, window.location.href).href;
+    ui.loadingStage.dataset.lastUrl = compressedUrl;
+    const compressed = await this.fetchBytes(compressedUrl);
+    return this.gunzip(compressed);
+  }
+
+  private async fetchModelAssets(): Promise<ModelAsset[]> {
+    if (typeof (globalThis as any).DecompressionStream !== "function") {
+      const files = await this.fetchJson<string[]>(`${BASE_URL}models/K1/files.json`);
+      return Promise.all(
+        files.map(async (path) => ({path, bytes: await this.fetchBytes(`${BASE_URL}models/K1/${path}`)})),
+      );
+    }
+    const compressed = await this.fetchBytes(`${BASE_URL}models/K1/assets.bin.gz.bin`);
+    const bundle = await this.gunzip(compressed);
+    const view = new DataView(bundle.buffer, bundle.byteOffset, bundle.byteLength);
+    const headerLength = view.getUint32(0, true);
+    const header = JSON.parse(new TextDecoder().decode(bundle.subarray(4, 4 + headerLength))) as ModelBundleHeader;
+    if (header.version !== 1) throw new Error(`不支持的 K1 模型包版本: ${header.version}`);
+    let offset = 4 + headerLength;
+    return header.files.map((file) => {
+      const bytes = bundle.slice(offset, offset + file.size);
+      offset += file.size;
+      return {path: file.path, bytes};
     });
+  }
+
+  private installModelAssets(files: ModelAsset[]): void {
     this.mujoco.FS.mkdir("/working");
     this.mujoco.FS.mkdir("/working/meshes");
-    for (const [index, file] of files.entries()) {
-      const response = await fetch(`${BASE_URL}models/K1/${file}`);
-      if (!response.ok) throw new Error(`Model asset ${file}: ${response.status}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      this.mujoco.FS.writeFile(`/working/${file}`, bytes);
-      this.setLoading("同步 K1 模型", 28 + Math.round((index / files.length) * 28));
+    for (const file of files) {
+      this.mujoco.FS.writeFile(`/working/${file.path}`, file.bytes);
     }
   }
 
@@ -624,7 +726,10 @@ class K1HeightDemo {
 const demo = new K1HeightDemo();
 demo.initialize().catch((error) => {
   console.error(error);
-  ui.loadingStage.textContent = error instanceof Error ? error.message : "仿真载入失败";
+  const message = error instanceof Error ? error.message : "仿真载入失败";
+  ui.loadingStage.textContent = message;
+  ui.loadingStage.title = error instanceof Error ? error.stack ?? message : message;
+  (window as any).__k1LoadError = error;
   ui.loadingProgress.style.background = "#ff7d62";
   ui.statusDot.classList.add("paused");
   ui.statusText.textContent = "载入失败";
