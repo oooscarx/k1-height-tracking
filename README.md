@@ -156,6 +156,8 @@ unless the corresponding `--wbc_disable_*` options are explicitly passed.
 
 ## MuJoCo WASM Demo
 
+[Open the live K1 Height Lab](https://oooscarx.github.io/k1-height-tracking/)
+
 The browser demo loads the K1 MJCF and meshes into MuJoCo 3.14 WebAssembly and
 runs the exported 365-input, 22-output actor through ONNX Runtime Web. Physics
 runs at 200 Hz and policy inference at 50 Hz.

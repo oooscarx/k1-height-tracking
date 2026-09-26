@@ -1,5 +1,7 @@
 # K1 MuJoCo WASM demo
 
+[Live demo](https://oooscarx.github.io/k1-height-tracking/)
+
 This app runs the exported K1 height-tracking actor entirely in the browser:
 
 - MuJoCo 3.14 WASM at 200 Hz
