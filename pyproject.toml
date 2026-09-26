@@ -1,0 +1,59 @@
+[project]
+name = "k1-height-tracking"
+version = "0.1.0"
+description = "WBC-AGILE height-tracking sit-down and stand-up training for the 22-DoF Booster K1"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "booster-assets",
+    "booster-train",
+    "isaaclab[isaacsim,all]==2.2.0",
+    "rsl-rl-lib==2.3.3",
+    "skrl==2.1.0",
+    "torch==2.7.0",
+    "torchvision==0.22.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.4.2",
+    "ruff==0.11.13",
+]
+
+[tool.uv]
+package = false
+required-version = ">=0.10.0"
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+override-dependencies = [
+    "nvidia-nccl-cu12==2.26.5 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[tool.uv.sources]
+booster-assets = { path = "third_party/booster_assets", editable = true }
+booster-train = { path = "source/booster_train", editable = true }
+rsl-rl-lib = { path = "third_party/wbc_agile_rsl_rl", editable = true }
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
+
+[tool.uv.extra-build-dependencies]
+flatdict = ["setuptools==80.9.0"]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["source/booster_train/booster_train/tasks/manager_based/beyond_mimic"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E402", "E501", "F403", "F405"]

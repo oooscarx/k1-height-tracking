@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>K1 Height Control</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="sim-shell">
+      <img id="sim-frame" class="sim-frame" alt="K1 仿真实时画面" />
+      <div class="shade"></div>
+
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">ISAAC LAB / K1</p>
+          <h1>Height Control</h1>
+        </div>
+        <div class="status-line" aria-live="polite">
+          <span id="connection-dot" class="status-dot"></span>
+          <span id="connection-text">连接中</span>
+          <span id="randomization-badge" class="badge">DR</span>
+          <span id="disturbance-badge" class="badge">DISTURB</span>
+        </div>
+      </header>
+
+      <section class="telemetry" aria-label="高度遥测">
+        <div class="metric"><span>目标</span><strong id="target-height">--</strong><small>m</small></div>
+        <div class="metric"><span>实际</span><strong id="measured-height">--</strong><small>m</small></div>
+        <div class="metric"><span>误差</span><strong id="height-error">--</strong><small>m</small></div>
+        <div class="metric"><span>地形</span><strong id="terrain-level">--</strong><small>level</small></div>
+        <div class="metric"><span>Lift</span><strong id="lift-scale">--</strong><small>scale</small></div>
+      </section>
+
+      <section class="control-dock" aria-label="仿真控制">
+        <div class="height-control">
+          <button id="height-down" class="icon-button" type="button" aria-label="降低目标高度" title="降低高度 (S)">−</button>
+          <div class="slider-wrap">
+            <input id="height-slider" type="range" min="-0.5" max="0.72" step="0.01" value="0.72" aria-label="目标高度" />
+            <div class="preset-row">
+              <button type="button" data-height="-0.5">放松 <kbd>1</kbd></button>
+              <button type="button" data-height="0.50">蹲低 <kbd>2</kbd></button>
+              <button type="button" data-height="0.72">站立 <kbd>3</kbd></button>
+            </div>
+          </div>
+          <button id="height-up" class="icon-button" type="button" aria-label="提高目标高度" title="提高高度 (W)">＋</button>
+        </div>
+
+        <div class="push-control" aria-label="扰动方向">
+          <button type="button" data-push="forward" aria-label="向前扰动" title="向前扰动 (↑)">↑</button>
+          <button type="button" data-push="left" aria-label="向左扰动" title="向左扰动 (←)">←</button>
+          <button id="reset" class="reset-button" type="button" aria-label="复位仿真" title="复位 (R)">R</button>
+          <button type="button" data-push="right" aria-label="向右扰动" title="向右扰动 (→)">→</button>
+          <button type="button" data-push="back" aria-label="向后扰动" title="向后扰动 (↓)">↓</button>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

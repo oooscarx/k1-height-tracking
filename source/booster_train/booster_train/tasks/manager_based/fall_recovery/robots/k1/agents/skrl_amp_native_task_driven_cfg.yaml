@@ -1,0 +1,95 @@
+seed: 42
+
+models:
+  separate: true
+  policy:
+    class: GaussianMixin
+    clip_actions: true
+    clip_mean_actions: true
+    clip_log_std: true
+    min_log_std: -4.6
+    max_log_std: -4.0
+    initial_log_std: -4.0
+    fixed_log_std: false
+    network:
+      - name: net
+        input: OBSERVATIONS
+        layers: [1024, 512, 256]
+        activations: elu
+    output: ACTIONS
+  value:
+    class: DeterministicMixin
+    clip_actions: false
+    network:
+      - name: net
+        input: STATES
+        layers: [1024, 512, 256]
+        activations: elu
+    output: ONE
+  discriminator:
+    class: DeterministicMixin
+    clip_actions: false
+    network:
+      - name: net
+        input: OBSERVATIONS
+        layers: [512, 256]
+        activations: relu
+    output: ONE
+
+memory:
+  class: RandomMemory
+  memory_size: -1
+
+motion_dataset:
+  class: RandomMemory
+  memory_size: 200000
+
+reply_buffer:
+  class: RandomMemory
+  memory_size: 1048576
+
+agent:
+  class: AMP
+  rollouts: 32
+  learning_epochs: 3
+  mini_batches: 8
+  discount_factor: 0.99
+  gae_lambda: 0.95
+  learning_rate: 2.0e-05
+  learning_rate_scheduler: null
+  learning_rate_scheduler_kwargs: null
+  observation_preprocessor: null
+  observation_preprocessor_kwargs: null
+  state_preprocessor: RunningStandardScaler
+  state_preprocessor_kwargs: null
+  value_preprocessor: RunningStandardScaler
+  value_preprocessor_kwargs: null
+  amp_observation_preprocessor: RunningStandardScaler
+  amp_observation_preprocessor_kwargs: null
+  random_timesteps: 0
+  learning_starts: 0
+  grad_norm_clip: 0.5
+  ratio_clip: 0.1
+  value_clip: 0.2
+  entropy_loss_scale: 0.0
+  value_loss_scale: 2.5
+  discriminator_loss_scale: 0.1
+  amp_batch_size: 2048
+  task_reward_scale: 5.0
+  style_reward_scale: 5.0
+  discriminator_batch_size: 8192
+  discriminator_logit_regularization_scale: 0.05
+  discriminator_gradient_penalty_scale: 5.0
+  discriminator_weight_decay_scale: 1.0e-04
+  time_limit_bootstrap: false
+  mixed_precision: true
+  experiment:
+    directory: "k1_fall_recovery_amp"
+    experiment_name: ""
+    write_interval: 40
+    checkpoint_interval: 400
+
+trainer:
+  class: SequentialTrainer
+  timesteps: 250000
+  environment_info: log

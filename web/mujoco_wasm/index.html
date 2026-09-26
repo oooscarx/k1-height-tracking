@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1114" />
+    <meta name="description" content="K1 height-tracking policy running locally in MuJoCo WebAssembly." />
+    <title>K1 Height Lab</title>
+  </head>
+  <body>
+    <div id="app">
+      <main id="viewport" aria-label="K1 MuJoCo simulation"></main>
+
+      <header class="topbar">
+        <div class="identity">
+          <span class="signal" aria-hidden="true"></span>
+          <div>
+            <h1>K1 Height Lab</h1>
+            <p>MuJoCo WASM <span aria-hidden="true">/</span> ONNX policy</p>
+          </div>
+        </div>
+        <div class="runtime-state" aria-live="polite">
+          <span id="status-dot" class="status-dot loading"></span>
+          <span id="status-text">正在载入仿真</span>
+        </div>
+      </header>
+
+      <aside class="telemetry" aria-label="实时状态">
+        <div class="metric emphasis">
+          <span>实际高度</span>
+          <strong id="actual-height">--</strong>
+          <small>m</small>
+        </div>
+        <div class="metric">
+          <span>跟踪误差</span>
+          <strong id="height-error">--</strong>
+          <small>m</small>
+        </div>
+        <div class="metric">
+          <span>外力</span>
+          <strong id="push-force">0</strong>
+          <small>N</small>
+        </div>
+        <div class="metric compact">
+          <span>策略</span>
+          <strong id="policy-rate">50 Hz</strong>
+        </div>
+        <div class="metric compact">
+          <span>物理</span>
+          <strong id="physics-rate">200 Hz</strong>
+        </div>
+      </aside>
+
+      <section class="control-deck" aria-label="仿真控制">
+        <div class="height-readout">
+          <span>目标高度</span>
+          <output id="target-output">0.72 m</output>
+        </div>
+        <input id="height-slider" type="range" min="-0.5" max="0.72" step="0.01" value="0.72" aria-label="目标高度" />
+        <div class="presets" role="group" aria-label="目标高度预设">
+          <button type="button" data-height="0.54">0.54</button>
+          <button type="button" data-height="0.63">0.63</button>
+          <button type="button" data-height="0.72" class="active">0.72</button>
+        </div>
+        <div class="deck-divider"></div>
+        <div class="toggle-group">
+          <label class="random-toggle">
+            <input id="stabilizer" type="checkbox" checked />
+            <span class="toggle-track"><span></span></span>
+            <span>辅助</span>
+          </label>
+          <label class="random-toggle">
+            <input id="randomization" type="checkbox" checked />
+            <span class="toggle-track"><span></span></span>
+            <span>扰动</span>
+          </label>
+        </div>
+        <label class="force-control">
+          <span>强度</span>
+          <input id="force-slider" type="range" min="0.5" max="1.5" step="0.1" value="1.0" aria-label="扰动强度" />
+          <output id="force-output">1.0x</output>
+        </label>
+        <div class="deck-actions">
+          <button id="push-button" class="icon-button" type="button" title="施加侧向扰动" aria-label="施加侧向扰动"><i data-lucide="zap"></i></button>
+          <button id="pause-button" class="icon-button" type="button" title="暂停" aria-label="暂停"><i data-lucide="pause"></i></button>
+          <button id="reset-button" class="icon-button" type="button" title="复位" aria-label="复位"><i data-lucide="rotate-ccw"></i></button>
+        </div>
+      </section>
+
+      <div id="loading" class="loading-screen">
+        <div class="loader-mark"><span></span></div>
+        <strong>K1</strong>
+        <p id="loading-stage">载入 WebAssembly</p>
+        <div class="loading-bar"><span id="loading-progress"></span></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

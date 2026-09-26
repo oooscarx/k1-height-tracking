@@ -1,0 +1,26 @@
+{
+  "name": "k1-height-mujoco-wasm",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "sync-assets": "node scripts/sync-assets.mjs",
+    "predev": "npm run sync-assets",
+    "dev": "vite --host 0.0.0.0",
+    "prebuild": "npm run sync-assets",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@mujoco/mujoco": "3.14.0",
+    "lucide": "1.48.0",
+    "onnxruntime-web": "1.30.0",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@types/three": "^0.186.0",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.7"
+  }
+}
