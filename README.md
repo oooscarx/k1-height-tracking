@@ -156,7 +156,7 @@ unless the corresponding `--wbc_disable_*` options are explicitly passed.
 
 ## MuJoCo WASM Demo
 
-[Open the live K1 Height Lab](https://oooscarx.github.io/k1-height-tracking/)
+[Open the live K1 Height Tracking Demo](https://oooscarx.github.io/k1-height-tracking/)
 
 The browser demo loads the K1 MJCF and meshes into MuJoCo 3.14 WebAssembly and
 runs the exported 365-input, 22-output actor through ONNX Runtime Web. Physics
@@ -169,14 +169,12 @@ npm run dev
 ```
 
 Open the Vite URL, then use the height slider, push button, pause, and reset
-controls. The committed actor comes from `model_301000.pt`; the accompanying
+controls. The committed actor comes from `model_307500.pt`; the accompanying
 manifest records checkpoint and ONNX hashes plus the exact joint, observation,
-gain, limit, and timing contract.
-
-The visible `辅助` toggle is enabled by default because the actor was trained in
-PhysX. It adds a soft upright/height constraint and a K1 crouch prior for a stable
-interactive MuJoCo presentation. Turning it off runs the raw cross-simulator
-actor, so the demo does not present the assist as learned policy behavior.
+gain, limit, and timing contract. The demo starts without external assistance;
+the optional `辅助` toggle is kept only for simulator diagnostics. The `扰动`
+toggle randomizes contact friction, gains, and scheduled pushes for interactive
+robustness checks.
 
 To export a different checkpoint:
 

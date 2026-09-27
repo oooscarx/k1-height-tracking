@@ -1,17 +1,17 @@
 :root {
-  color: #1b1d1c;
-  background: #f3f4f2;
+  color: #181a19;
+  background: #f7f8f7;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   letter-spacing: 0;
-  --surface: rgba(255, 255, 255, 0.94);
+  --surface: rgba(255, 255, 255, 0.96);
   --surface-solid: #ffffff;
-  --text: #1b1d1c;
-  --muted: #717572;
-  --border: #d8dad7;
-  --accent: #e86424;
-  --accent-dark: #bd4517;
+  --text: #181a19;
+  --muted: #6d716e;
+  --border: #d9dcda;
+  --accent: #232624;
+  --accent-dark: #111312;
 }
 
 * {
@@ -30,7 +30,7 @@ body,
 
 body {
   min-width: 320px;
-  background: #f3f4f2;
+  background: #f7f8f7;
 }
 
 button,
@@ -74,11 +74,11 @@ button {
   right: 0;
   display: flex;
   align-items: center;
-  height: 64px;
+  height: 60px;
   padding: 0 28px;
   border-bottom: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.9);
-  backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
 }
 
 .identity {
@@ -96,15 +96,15 @@ button {
 .telemetry {
   position: fixed;
   z-index: 8;
-  top: 88px;
+  top: 84px;
   right: 28px;
   width: 174px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
-  box-shadow: 0 8px 28px rgba(25, 29, 26, 0.08);
-  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 18px rgba(24, 26, 25, 0.05);
+  backdrop-filter: blur(10px);
 }
 
 .metric {
@@ -145,7 +145,7 @@ button {
 }
 
 .metric.emphasis strong {
-  color: var(--accent-dark);
+  color: var(--text);
 }
 
 .control-deck {
@@ -164,8 +164,8 @@ button {
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--surface);
-  box-shadow: 0 10px 36px rgba(25, 29, 26, 0.11);
-  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(24, 26, 25, 0.07);
+  backdrop-filter: blur(10px);
 }
 
 .height-readout {
@@ -281,7 +281,7 @@ input[type="range"] {
 }
 
 .random-toggle input:checked + .toggle-track {
-  border-color: #c94e1b;
+  border-color: var(--accent);
   background: var(--accent);
 }
 
@@ -327,7 +327,7 @@ input[type="range"] {
 .icon-button:hover {
   border-color: var(--accent);
   color: var(--accent-dark);
-  background: #fff8f4;
+  background: #f2f3f2;
 }
 
 .icon-button svg {
@@ -344,7 +344,7 @@ input[type="range"] {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: #f3f4f2;
+  background: #f7f8f7;
   transition: opacity 280ms ease, visibility 280ms ease;
 }
 

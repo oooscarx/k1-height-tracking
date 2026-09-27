@@ -18,6 +18,18 @@ type PolicyManifest = {
   observation_layout: Array<{name: string; width: number; scale: number}>;
   joint_names: string[];
   action_clip: [number, number];
+  position_delta_clip: [number, number];
+  position_target_margin: number;
+  position_braking_horizon_s: number;
+  actuator_delay_steps: number[];
+  position_target_velocity_limit: number[];
+  height_residual_fade_joint_indices: number[];
+  height_residual_fade_range: [number, number];
+  height_residual_minimum_scale: number;
+  height_posture_center: number[];
+  height_posture_range: [number, number];
+  height_posture_exponent: number;
+  height_posture_blend: number;
   action_center: number[];
   action_scale: number[];
   position_minimum: number[];
@@ -25,6 +37,10 @@ type PolicyManifest = {
   stiffness: number[];
   damping: number[];
   torque_limit: number[];
+  motor_effort_limit: number[];
+  motor_velocity_limit: number[];
+  motor_knee_velocity: number[];
+  joint_armature: number[];
   policy_rate_hz: number;
   simulation_rate_hz: number;
   tracked_point_offset_m: number;
@@ -135,7 +151,10 @@ class K1HeightDemo {
   private readonly geometryCache = new Map<string, THREE.BufferGeometry>();
 
   private action = new Float32Array(22);
+  private jointTargets = new Float32Array(22);
+  private targetDelayHistory: Float32Array[] = [];
   private targetHeight = 0.72;
+  private commandHeight = 0.72;
   private paused = false;
   private policyPending = false;
   private accumulator = 0;
@@ -206,6 +225,9 @@ class K1HeightDemo {
     this.session = session;
     this.installModelAssets(modelAssets);
     this.model = this.mujoco.MjModel.mj_loadXML("/working/K1_22dof.xml");
+    for (let index = 0; index < this.manifest.output_size; index++) {
+      this.model.dof_armature[6 + index] = this.manifest.joint_armature[index];
+    }
     this.data = new this.mujoco.MjData(this.model);
     this.trunkBodyId = this.mujoco.mj_name2id(this.model, this.mujoco.mjtObj.mjOBJ_BODY.value, "Trunk");
     this.groundGeomId = this.mujoco.mj_name2id(this.model, this.mujoco.mjtObj.mjOBJ_GEOM.value, "ground");
@@ -310,8 +332,8 @@ class K1HeightDemo {
   }
 
   private setupRenderer(): void {
-    this.scene.background = new THREE.Color(0xf3f4f2);
-    this.scene.fog = new THREE.Fog(0xf3f4f2, 3.2, 8);
+    this.scene.background = new THREE.Color(0xf7f8f7);
+    this.scene.fog = new THREE.Fog(0xf7f8f7, 3.2, 8);
 
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -331,9 +353,9 @@ class K1HeightDemo {
     this.controls.maxDistance = 4;
     this.controls.maxPolarAngle = Math.PI * 0.49;
 
-    const hemi = new THREE.HemisphereLight(0xffffff, 0xc8ccc7, 2.1);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xcfd2d0, 2.15);
     this.scene.add(hemi);
-    const key = new THREE.DirectionalLight(0xfffdf8, 3.4);
+    const key = new THREE.DirectionalLight(0xffffff, 3.2);
     key.position.set(-1.8, -2.2, 3.2);
     key.castShadow = true;
     key.shadow.mapSize.set(2048, 2048);
@@ -346,12 +368,12 @@ class K1HeightDemo {
     fill.position.set(2.4, -1.4, 1.8);
     this.scene.add(fill);
 
-    const groundMaterial = new THREE.MeshStandardMaterial({color: 0xe5e7e3, roughness: 0.94, metalness: 0});
+    const groundMaterial = new THREE.MeshStandardMaterial({color: 0xebecea, roughness: 0.96, metalness: 0});
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), groundMaterial);
     ground.receiveShadow = true;
     ground.position.z = -0.003;
     this.scene.add(ground);
-    const grid = new THREE.GridHelper(8, 32, 0xbfc4be, 0xd5d8d4);
+    const grid = new THREE.GridHelper(8, 32, 0xc9ccca, 0xdfe1df);
     grid.rotation.x = Math.PI / 2;
     grid.position.z = -0.001;
     const materials = Array.isArray(grid.material) ? grid.material : [grid.material];
@@ -403,7 +425,7 @@ class K1HeightDemo {
   }
 
   private setTargetHeight(value: number): void {
-    this.targetHeight = THREE.MathUtils.clamp(value, -0.5, 0.72);
+    this.targetHeight = THREE.MathUtils.clamp(value, 0.54, 0.72);
     ui.heightSlider.value = this.targetHeight.toFixed(2);
     ui.targetOutput.value = `${this.targetHeight.toFixed(2)} m`;
     document.querySelectorAll<HTMLButtonElement>("[data-height]").forEach((button) => {
@@ -431,7 +453,9 @@ class K1HeightDemo {
     this.data.qpos[3] = 1;
     for (let index = 0; index < this.manifest.output_size; index++) {
       this.data.qpos[7 + index] = this.manifest.action_center[index];
+      this.jointTargets[index] = this.manifest.action_center[index];
     }
+    this.targetDelayHistory = [this.jointTargets.slice()];
     this.action.fill(0);
     this.pushStepsRemaining = 0;
     this.pushMagnitude = 0;
@@ -439,6 +463,7 @@ class K1HeightDemo {
     this.pushY = 0;
     this.physicsSteps = 0;
     this.accumulator = 0;
+    this.commandHeight = this.targetHeight;
     this.gainScale = ui.randomization.checked ? 0.9 + Math.random() * 0.2 : 1;
     if (this.groundGeomId >= 0) {
       const friction = ui.randomization.checked ? 0.55 + Math.random() * 0.75 : 1;
@@ -473,7 +498,7 @@ class K1HeightDemo {
       joint_pos_rel: jointPosition,
       joint_vel_rel: jointVelocity,
       last_action: Array.from(this.action),
-      height_command: [this.targetHeight],
+      height_command: [this.commandHeight],
     };
   }
 
@@ -482,7 +507,8 @@ class K1HeightDemo {
     this.policyPending = true;
     try {
       this.history.push(this.observe());
-      const tensor = new ort.Tensor("float32", this.history.flatten(), [1, this.manifest.input_size]);
+      const policyInput = this.history.flatten();
+      const tensor = new ort.Tensor("float32", policyInput, [1, this.manifest.input_size]);
       const result = await this.session.run({[this.manifest.input_name]: tensor});
       const output = result[this.manifest.output_name];
       if (!output) throw new Error(`Missing ONNX output ${this.manifest.output_name}`);
@@ -494,6 +520,7 @@ class K1HeightDemo {
           this.manifest.action_clip[1],
         );
       }
+      this.updateJointTargets();
     } catch (error) {
       console.error(error);
       ui.statusDot.classList.add("paused");
@@ -535,10 +562,10 @@ class K1HeightDemo {
   }
 
   private applyDemoStabilizer(offset: number): void {
-    const support = THREE.MathUtils.clamp((this.targetHeight + 0.1) / 0.4, 0, 1);
+    const support = THREE.MathUtils.clamp((this.commandHeight + 0.1) / 0.4, 0, 1);
     if (support <= 0) return;
     const browserTrackedOffset = this.manifest.tracked_point_offset_m - 0.028;
-    const targetRootHeight = this.targetHeight - browserTrackedOffset;
+    const targetRootHeight = this.commandHeight - browserTrackedOffset;
     const rootX = this.data.qpos[0];
     const rootY = this.data.qpos[1];
     const rootZ = this.data.qpos[2];
@@ -557,7 +584,7 @@ class K1HeightDemo {
 
   private assistedCenter(index: number): number {
     const name = this.manifest.joint_names[index];
-    const crouch = THREE.MathUtils.clamp((0.72 - this.targetHeight) / 0.36, 0, 1);
+    const crouch = THREE.MathUtils.clamp((0.72 - this.commandHeight) / 0.36, 0, 1);
     let offset = 0;
     if (name.endsWith("Hip_Pitch")) offset = -0.8 * crouch;
     if (name.endsWith("Knee_Pitch")) offset = 2.4 * crouch;
@@ -569,26 +596,111 @@ class K1HeightDemo {
     );
   }
 
+  private policyCenter(index: number): number {
+    const [minimumHeight, maximumHeight] = this.manifest.height_posture_range;
+    const phase = Math.pow(
+      THREE.MathUtils.clamp(
+        (maximumHeight - this.commandHeight) / (maximumHeight - minimumHeight),
+        0,
+        1,
+      ),
+      this.manifest.height_posture_exponent,
+    );
+    return (
+      this.manifest.action_center[index] +
+      this.manifest.height_posture_blend *
+        phase *
+        (this.manifest.height_posture_center[index] - this.manifest.action_center[index])
+    );
+  }
+
+  private updateJointTargets(): void {
+    const [fadeStart, fadeEnd] = this.manifest.height_residual_fade_range;
+    const phase = THREE.MathUtils.clamp((fadeEnd - this.commandHeight) / (fadeEnd - fadeStart), 0, 1);
+    const smoothPhase = phase * phase * (3 - 2 * phase);
+    const heightResidualScale =
+      this.manifest.height_residual_minimum_scale +
+      (1 - this.manifest.height_residual_minimum_scale) * smoothPhase;
+    const fadedJoints = new Set(this.manifest.height_residual_fade_joint_indices);
+    const assisted = ui.stabilizer.checked;
+    const policyBlend = assisted ? 0.05 : 1;
+
+    for (let index = 0; index < this.manifest.output_size; index++) {
+      const jointDelta = THREE.MathUtils.clamp(
+        this.manifest.action_scale[index] * this.action[index],
+        this.manifest.position_delta_clip[0],
+        this.manifest.position_delta_clip[1],
+      );
+      const residualScale = fadedJoints.has(index) ? heightResidualScale : 1;
+      const center = assisted ? this.assistedCenter(index) : this.policyCenter(index);
+      let requested = THREE.MathUtils.clamp(
+        center + policyBlend * residualScale * jointDelta,
+        this.manifest.position_minimum[index],
+        this.manifest.position_maximum[index],
+      );
+      const safeMinimum = this.manifest.position_minimum[index] + this.manifest.position_target_margin;
+      const safeMaximum = this.manifest.position_maximum[index] - this.manifest.position_target_margin;
+      requested = THREE.MathUtils.clamp(requested, safeMinimum, safeMaximum);
+      const current = this.data.qpos[7 + index];
+      const velocity = this.data.qvel[6 + index];
+      const predicted = current + velocity * this.manifest.position_braking_horizon_s;
+      if ((velocity > 0 && predicted > safeMaximum) || (velocity < 0 && predicted < safeMinimum)) {
+        requested = THREE.MathUtils.clamp(
+          current - velocity * this.manifest.position_braking_horizon_s,
+          safeMinimum,
+          safeMaximum,
+        );
+      }
+      const rateLimited =
+        this.jointTargets[index] +
+        THREE.MathUtils.clamp(
+          requested - this.jointTargets[index],
+          -this.manifest.position_target_velocity_limit[index] / this.manifest.policy_rate_hz,
+          this.manifest.position_target_velocity_limit[index] / this.manifest.policy_rate_hz,
+        );
+      const errorLimit = this.manifest.torque_limit[index] / this.manifest.stiffness[index];
+      this.jointTargets[index] = current + THREE.MathUtils.clamp(rateLimited - current, -errorLimit, errorLimit);
+    }
+  }
+
   private applyController(): void {
     this.data.qfrc_applied.fill(0);
     for (let index = 0; index < this.manifest.output_size; index++) {
-      const assisted = ui.stabilizer.checked;
-      const policyBlend = assisted ? 0.05 : 1;
-      const desired =
-        (assisted ? this.assistedCenter(index) : this.manifest.action_center[index]) +
-        policyBlend * this.manifest.action_scale[index] * this.action[index];
-      const positionError = desired - this.data.qpos[7 + index];
+      const current = this.data.qpos[7 + index];
+      const delay = Math.max(0, Math.round(this.manifest.actuator_delay_steps[index]));
+      const historyIndex = Math.max(0, this.targetDelayHistory.length - 1 - delay);
+      const positionError = this.targetDelayHistory[historyIndex][index] - current;
       const velocity = this.data.qvel[6 + index];
       const rawTorque =
         this.gainScale * this.manifest.stiffness[index] * positionError -
         this.gainScale * this.manifest.damping[index] * velocity;
-      const limit = this.manifest.torque_limit[index];
-      this.data.qfrc_applied[6 + index] = THREE.MathUtils.clamp(rawTorque, -limit, limit);
+      const speed = Math.abs(velocity);
+      const motorLimit = this.manifest.motor_effort_limit[index];
+      const maximumVelocity = this.manifest.motor_velocity_limit[index];
+      const kneeVelocity = Math.min(this.manifest.motor_knee_velocity[index], maximumVelocity);
+      const speedLimit =
+        speed <= kneeVelocity || kneeVelocity >= maximumVelocity
+          ? motorLimit
+          : THREE.MathUtils.clamp(
+              (motorLimit * (maximumVelocity - speed)) / (maximumVelocity - kneeVelocity),
+              0,
+              motorLimit,
+            );
+      this.data.qfrc_applied[6 + index] = THREE.MathUtils.clamp(rawTorque, -speedLimit, speedLimit);
     }
   }
 
   private stepPhysics(): void {
+    const maximumCommandStep = 0.08 / this.manifest.simulation_rate_hz;
+    this.commandHeight += THREE.MathUtils.clamp(
+      this.targetHeight - this.commandHeight,
+      -maximumCommandStep,
+      maximumCommandStep,
+    );
     this.updateExternalForce();
+    this.targetDelayHistory.push(this.jointTargets.slice());
+    const maximumDelay = Math.max(...this.manifest.actuator_delay_steps);
+    while (this.targetDelayHistory.length > maximumDelay + 1) this.targetDelayHistory.shift();
     this.applyController();
     const integrationSubsteps = Math.max(
       1,
@@ -647,15 +759,15 @@ class K1HeightDemo {
 
   private robotAppearance(meshName: string): THREE.MeshStandardMaterialParameters {
     if (meshName === "Trunk") {
-      return {color: 0xc8c7c3, roughness: 0.36, metalness: 0.54};
+      return {color: 0xd9dcdb, roughness: 0.3, metalness: 0.58};
     }
     if (meshName === "K1logo") {
-      return {color: 0x353736, roughness: 0.46, metalness: 0.24};
+      return {color: 0x303332, roughness: 0.42, metalness: 0.18};
     }
     if (meshName.endsWith("Ankle_Cross")) {
-      return {color: 0xe86424, roughness: 0.4, metalness: 0.3};
+      return {color: 0xe05a1f, roughness: 0.36, metalness: 0.28};
     }
-    return {color: 0x2b2d30, roughness: 0.42, metalness: 0.28};
+    return {color: 0x1b1e1f, roughness: 0.36, metalness: 0.24};
   }
 
   private initializeRobotScene(): void {

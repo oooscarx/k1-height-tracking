@@ -16,7 +16,11 @@ await rm(legacyOrtDir, {recursive: true, force: true});
 await mkdir(path.join(outputDir, "meshes"), {recursive: true});
 
 const sourceXml = await readFile(path.join(sourceDir, "K1_22dof.xml"), "utf8");
-const browserXml = sourceXml;
+const browserXml = sourceXml.replace(
+  'name="ground" type="plane" pos="0 0 0" size="0 0 1" material="matplane" condim="1" friction="0.4 0.005 0.0001"',
+  'name="ground" type="plane" pos="0 0 0" size="0 0 1" material="matplane" condim="3" friction="1.0 0.005 0.0001"',
+);
+if (browserXml === sourceXml) throw new Error("K1 browser ground contact patch no longer matches the source MJCF");
 await writeFile(path.join(outputDir, "K1_22dof.xml"), browserXml);
 
 const meshFiles = [...new Set([...browserXml.matchAll(/file="([^"]+\.STL)"/g)].map((match) => match[1]))].sort();

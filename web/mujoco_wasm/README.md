@@ -19,13 +19,11 @@ The asset sync runs automatically before development and production builds. The
 committed policy manifest records the source checkpoint and all deployment
 constants used by the browser controller.
 
-The browser starts with a visible demo-assist toggle enabled. It applies a soft
-base-height/upright constraint, a continuous K1 crouch prior, and a small policy
-joint-delta blend to bridge the PhysX-to-MuJoCo dynamics gap. Disable the toggle
-to inspect the unassisted cross-simulator policy. The assist is a presentation
-aid, not part of the exported actor or training result.
+The browser starts with external assistance disabled. The optional demo-assist
+toggle applies a soft base-height/upright constraint and is retained only as a
+diagnostic aid; it is not part of the exported actor or training result.
 
-The demo uses checkpoint `model_301000.pt`. Its SHA-256 hashes, joint order,
+The demo uses checkpoint `model_307500.pt`. Its SHA-256 hashes, joint order,
 action limits, gains, observation layout, and control rates are recorded in
 `public/policy/k1_height_policy.json`.
 

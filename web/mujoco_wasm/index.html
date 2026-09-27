@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f3f4f2" />
+    <meta name="theme-color" content="#f7f8f7" />
     <meta name="description" content="K1 height-tracking policy running locally in MuJoCo WebAssembly." />
     <title>K1 Height Tracking Demo</title>
   </head>
@@ -44,7 +44,7 @@
           <span>目标高度</span>
           <output id="target-output">0.72 m</output>
         </div>
-        <input id="height-slider" type="range" min="-0.5" max="0.72" step="0.01" value="0.72" aria-label="目标高度" />
+        <input id="height-slider" type="range" min="0.54" max="0.72" step="0.01" value="0.72" aria-label="目标高度" />
         <div class="presets" role="group" aria-label="目标高度预设">
           <button type="button" data-height="0.54">0.54</button>
           <button type="button" data-height="0.63">0.63</button>
@@ -53,12 +53,12 @@
         <div class="deck-divider"></div>
         <div class="toggle-group">
           <label class="random-toggle">
-            <input id="stabilizer" type="checkbox" checked />
+            <input id="stabilizer" type="checkbox" />
             <span class="toggle-track"><span></span></span>
             <span>辅助</span>
           </label>
           <label class="random-toggle">
-            <input id="randomization" type="checkbox" checked />
+            <input id="randomization" type="checkbox" />
             <span class="toggle-track"><span></span></span>
             <span>扰动</span>
           </label>
