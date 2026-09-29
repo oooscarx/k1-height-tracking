@@ -158,6 +158,8 @@ unless the corresponding `--wbc_disable_*` options are explicitly passed.
 
 [Open the live K1 Height Tracking Demo](https://oooscarx.github.io/k1-height-tracking/)
 
+[![K1 height tracking demo running in MuJoCo WebAssembly](docs/images/k1-height-tracking-demo.png)](https://oooscarx.github.io/k1-height-tracking/)
+
 The browser demo loads the K1 MJCF and meshes into MuJoCo 3.14 WebAssembly and
 runs the exported 365-input, 22-output actor through ONNX Runtime Web. Physics
 runs at 200 Hz and policy inference at 50 Hz.
@@ -169,7 +171,7 @@ npm run dev
 ```
 
 Open the Vite URL, then use the height slider, push button, pause, and reset
-controls. The committed actor comes from `model_307500.pt`; the accompanying
+controls. The committed actor comes from `model_304460.pt`; the accompanying
 manifest records checkpoint and ONNX hashes plus the exact joint, observation,
 gain, limit, and timing contract. The demo starts without external assistance;
 the optional `辅助` toggle is kept only for simulator diagnostics. The `扰动`
