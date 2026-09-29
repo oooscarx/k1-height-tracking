@@ -1,10 +1,10 @@
 {
-  "schema_version": 2,
+  "schema_version": 5,
   "policy": "K1 height tracking",
-  "checkpoint": "model_307500.pt",
-  "checkpoint_iteration": 307500,
-  "checkpoint_sha256": "a7fdad8683a824554450e97ba9edecb9f70e4cab01564574e52aea41a57e2184",
-  "onnx_sha256": "7ed472f4954b2a7bc1dcf2eba65d7281993c22dce72c363c446fd2cacce79181",
+  "checkpoint": "model_304460.pt",
+  "checkpoint_iteration": 304460,
+  "checkpoint_sha256": "10a17a19477062bcc2a8ab928bde08cdea8b1489dbfe5d33e0e1e00f5598ba73",
+  "onnx_sha256": "ae12f7e5502b806b2dafb7a1923c49f5c822c8fc24d72a6b21a4b758aa95320d",
   "input_name": "observation",
   "output_name": "action",
   "input_size": 365,
@@ -125,6 +125,8 @@
     10.0,
     10.0
   ],
+  "position_target_velocity_limit_initialize_from_target": false,
+  "position_target_velocity_limit_warmup_steps": 0,
   "height_residual_fade_joint_indices": [
     10,
     11,
@@ -139,11 +141,45 @@
     20,
     21
   ],
+  "height_residual_amplify_joint_indices": [
+    10,
+    13,
+    14,
+    16,
+    19,
+    20
+  ],
   "height_residual_fade_range": [
     0.66,
     0.72
   ],
   "height_residual_minimum_scale": 0.9,
+  "height_residual_base_maximum_scale": 1.05,
+  "height_residual_maximum_scale": 1.0,
+  "height_residual_handoff_range": [
+    0.59,
+    0.66
+  ],
+  "height_residual_handoff_minimum_scale": 0.85,
+  "height_residual_deep_handoff_range": [
+    0.56,
+    0.6
+  ],
+  "height_residual_deep_handoff_minimum_scale": 0.2,
+  "height_residual_deep_handoff_joint_indices": [
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21
+  ],
   "height_posture_center": [
     0.0,
     0.0,
@@ -155,25 +191,123 @@
     1.25,
     0.0,
     0.5,
-    -1.135,
+    -1.237882482,
     0.0,
     0.0,
-    1.92,
+    2.1014999999999997,
     -0.785,
     0.0,
-    -1.135,
+    -1.237882482,
     0.0,
     0.0,
-    1.92,
+    2.1014999999999997,
     -0.785,
+    0.0
+  ],
+  "height_posture_high_center": [
+    0.0,
+    0.0,
+    0.2,
+    -1.25,
+    0.0,
+    -0.5,
+    0.2,
+    1.25,
+    0.0,
+    0.5,
+    -0.10204840799999998,
+    0.0,
+    0.0,
+    0.21091759399999999,
+    -0.12,
+    0.0,
+    -0.10204840799999998,
+    0.0,
+    0.0,
+    0.21091759399999999,
+    -0.12,
     0.0
   ],
   "height_posture_range": [
     0.54,
     0.72
   ],
-  "height_posture_exponent": 0.6,
-  "height_posture_blend": 0.4,
+  "height_posture_exponent": 0.316,
+  "height_posture_blend": 1.0,
+  "height_posture_phase_knots": [
+    [
+      0.54,
+      0.0
+    ],
+    [
+      0.55,
+      0.06
+    ],
+    [
+      0.56,
+      0.169
+    ],
+    [
+      0.57,
+      0.31
+    ],
+    [
+      0.58,
+      0.46
+    ],
+    [
+      0.585,
+      0.53
+    ],
+    [
+      0.59,
+      0.61
+    ],
+    [
+      0.6,
+      0.655
+    ],
+    [
+      0.62,
+      0.735
+    ],
+    [
+      0.66,
+      0.87
+    ],
+    [
+      0.72,
+      1.0
+    ]
+  ],
+  "last_action_scales": [
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "trained_height_range": [
+    0.54,
+    0.72
+  ],
   "action_center": [
     0.0,
     0.0,
@@ -305,18 +439,18 @@
     3.0,
     2.5,
     2.5,
-    5.0,
-    5.0,
-    5.0,
-    5.0,
-    5.0,
-    5.0,
-    5.0,
-    5.0,
-    5.0,
-    5.0,
-    5.0,
-    5.0
+    10.0,
+    10.0,
+    10.0,
+    10.0,
+    10.0,
+    10.0,
+    10.0,
+    10.0,
+    10.0,
+    10.0,
+    10.0,
+    10.0
   ],
   "torque_limit": [
     70.0,
@@ -441,5 +575,6 @@
   "policy_rate_hz": 50.0,
   "simulation_rate_hz": 200.0,
   "tracked_point_offset_m": 0.2,
-  "standing_root_height_m": 0.52
+  "standing_root_height_m": 0.52,
+  "source_env_config_sha256": "6b8908d1422868a39d2e636ebd7139fafb6d9c777edfb23c5d927163b411b5a9"
 }

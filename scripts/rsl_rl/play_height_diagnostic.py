@@ -80,6 +80,289 @@ parser.add_argument(
     help="Force all height-diagnostic resets to the configured default standing pose.",
 )
 parser.add_argument(
+    "--height_transition_output",
+    type=str,
+    default=None,
+    help="Write a no-lift rate-limited height-sequence stability report to this JSON file.",
+)
+parser.add_argument(
+    "--height_transition_hold_s",
+    type=float,
+    default=7.0,
+    help="Duration of each requested height in the transition diagnostic.",
+)
+parser.add_argument(
+    "--height_transition_rate_mps",
+    type=float,
+    default=0.08,
+    help="Height-command slew rate used by the transition diagnostic.",
+)
+parser.add_argument(
+    "--height_policy_command_offset_m",
+    type=float,
+    default=0.0,
+    help="Add an offset to the five height-command history samples seen by the policy only.",
+)
+parser.add_argument(
+    "--height_policy_command_minimum_m",
+    type=float,
+    default=None,
+    help="Clamp the five height-command history samples seen by the policy to this minimum.",
+)
+parser.add_argument(
+    "--height_transition_sequence",
+    type=str,
+    default="0.54,0.60,0.66,0.72,0.60,0.54,0.72",
+    help="Comma-separated requested heights for the transition diagnostic.",
+)
+parser.add_argument(
+    "--height_transition_command_range",
+    type=float,
+    nargs=2,
+    metavar=("MIN", "MAX"),
+    default=None,
+    help="Override the command range without changing the action contract.",
+)
+parser.add_argument(
+    "--height_transition_zero_sagittal_actions",
+    action="store_true",
+    help="Zero hip, knee, and ankle pitch policy residuals during transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_zero_ankle_roll_actions",
+    action="store_true",
+    help="Zero both ankle-roll policy residuals during transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_ankle_roll_action_scale",
+    type=float,
+    default=None,
+    help="Scale both ankle-roll policy residuals during transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_ankle_roll_position_scale",
+    type=float,
+    default=None,
+    help="Scale both ankle-roll physical residual ranges during transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_ankle_roll_contract_scale",
+    type=float,
+    default=None,
+    help="Scale ankle-roll physical residuals and matching last-action observations.",
+)
+parser.add_argument(
+    "--height_transition_ankle_roll_history_scale",
+    type=float,
+    default=None,
+    help="Override ankle-roll scaling in the policy and critic last-action history.",
+)
+parser.add_argument(
+    "--height_transition_zero_policy_actions",
+    action="store_true",
+    help="Zero every policy residual during transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_initial_yaw_rad",
+    type=float,
+    default=None,
+    help="Override the initial standing-reset yaw for every diagnostic environment.",
+)
+parser.add_argument(
+    "--height_transition_residual_base_maximum_scale",
+    type=float,
+    default=None,
+    help="Override the low-height residual scale for non-amplified leg joints.",
+)
+parser.add_argument(
+    "--height_transition_residual_handoff_scale",
+    type=float,
+    default=None,
+    help="Override the low-height handoff scale for amplified sagittal leg joints.",
+)
+parser.add_argument(
+    "--height_transition_leg_damping_multiplier",
+    type=float,
+    default=None,
+    help="Multiply leg and foot actuator damping for transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_leg_target_velocity_limit",
+    type=float,
+    default=None,
+    help="Override the leg position-target velocity limit in rad/s.",
+)
+parser.add_argument(
+    "--height_transition_bad_orientation_limit_rad",
+    type=float,
+    default=None,
+    help="Override the bad-orientation termination angle for transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_minimum_root_height_m",
+    type=float,
+    default=None,
+    help="Override the root-height termination threshold for transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_env_spacing",
+    type=float,
+    default=None,
+    help="Override cloned-environment spacing for transition diagnostics.",
+)
+parser.add_argument(
+    "--height_transition_posture_depth_scale",
+    type=float,
+    default=None,
+    help="Scale the low posture away from the high posture without moving the high endpoint.",
+)
+parser.add_argument(
+    "--height_transition_posture_exponent",
+    type=float,
+    default=None,
+    help="Override the height-conditioned posture interpolation exponent.",
+)
+parser.add_argument(
+    "--height_transition_posture_low_exponent",
+    type=float,
+    default=None,
+    help="Override the dedicated low-segment posture interpolation exponent.",
+)
+parser.add_argument(
+    "--height_transition_posture_low_handoff_height",
+    type=float,
+    default=None,
+    help="Enable a dedicated low posture segment below this height.",
+)
+parser.add_argument(
+    "--height_transition_posture_phase_knots",
+    type=str,
+    default=None,
+    help=(
+        "Override posture phase knots as comma-separated height:phase pairs."
+    ),
+)
+parser.add_argument(
+    "--height_transition_posture_minimum",
+    type=float,
+    default=None,
+    help="Override the command height mapped to the low posture endpoint.",
+)
+parser.add_argument(
+    "--height_transition_deep_handoff_scale",
+    type=float,
+    default=None,
+    help="Override the deep residual handoff minimum scale.",
+)
+parser.add_argument(
+    "--height_transition_deep_handoff_range",
+    type=float,
+    nargs=2,
+    metavar=("MIN", "MAX"),
+    default=None,
+    help="Override the deep residual handoff height range.",
+)
+parser.add_argument(
+    "--height_transition_deep_handoff_sagittal_only",
+    action="store_true",
+    help="Apply the deep residual handoff only to sagittal leg joints.",
+)
+parser.add_argument(
+    "--height_transition_measured_conditioning_blend",
+    type=float,
+    default=None,
+    help="Blend measured height into both posture and residual-gain conditioning.",
+)
+parser.add_argument(
+    "--height_transition_posture_measured_blend",
+    type=float,
+    default=None,
+    help="Blend measured height into posture conditioning only.",
+)
+parser.add_argument(
+    "--height_transition_residual_measured_blend",
+    type=float,
+    default=None,
+    help="Blend measured height into residual-gain conditioning only.",
+)
+parser.add_argument(
+    "--height_transition_residual_conditioning_maximum",
+    action="store_true",
+    help="Condition residual gain on max(commanded height, measured height).",
+)
+parser.add_argument(
+    "--startup_trace_output",
+    type=str,
+    default=None,
+    help="Write the first policy steps after a standing reset to this JSON file.",
+)
+parser.add_argument(
+    "--startup_trace_steps",
+    type=int,
+    default=10,
+    help="Number of policy steps to record with --startup_trace_output.",
+)
+parser.add_argument(
+    "--sanitize_actor_output",
+    type=str,
+    default=None,
+    help="Write a checkpoint whose actor is distilled to the configured executed action range.",
+)
+parser.add_argument(
+    "--sanitize_actor_steps",
+    type=int,
+    default=300,
+    help="Policy steps collected per actor-head distillation round.",
+)
+parser.add_argument(
+    "--sanitize_actor_rounds",
+    type=int,
+    default=3,
+    help="Teacher-forced bounded-actor distillation rounds.",
+)
+parser.add_argument(
+    "--sanitize_actor_learning_rate",
+    type=float,
+    default=3.0e-4,
+    help="Learning rate used to distill the bounded actor.",
+)
+parser.add_argument(
+    "--distill_height_response_output",
+    type=str,
+    default=None,
+    help="Write a checkpoint with a supervised low/high height action response.",
+)
+parser.add_argument("--distill_height_response_warmup_steps", type=int, default=150)
+parser.add_argument("--distill_height_response_collect_steps", type=int, default=200)
+parser.add_argument("--distill_height_response_optimization_steps", type=int, default=1000)
+parser.add_argument("--distill_height_response_batch_size", type=int, default=2048)
+parser.add_argument("--distill_height_response_learning_rate", type=float, default=1.0e-3)
+parser.add_argument(
+    "--distill_height_response_train_all_layers",
+    action="store_true",
+    help="Fit the complete actor instead of only its output layer.",
+)
+parser.add_argument(
+    "--distill_height_response_target_weight",
+    type=float,
+    default=1.0,
+    help="Extra loss weight for the selected height-response action dimensions.",
+)
+parser.add_argument("--distill_height_response_low", type=float, default=0.68)
+parser.add_argument("--distill_height_response_high", type=float, default=0.72)
+parser.add_argument(
+    "--distill_height_response_anchor",
+    choices=("low", "high"),
+    default="low",
+    help="Preserve the teacher at this endpoint and shape the opposite endpoint.",
+)
+parser.add_argument(
+    "--distill_height_response_delta",
+    type=str,
+    default="10:0.10,13:-0.35,14:0.10,16:0.10,19:-0.35,20:0.10",
+    help="Comma-separated ACTION_INDEX:HIGH_MINUS_LOW_ACTION pairs.",
+)
+parser.add_argument(
     "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
 )
 parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
@@ -163,6 +446,58 @@ if args_cli.height_diagnostic_warmup_steps < 0:
     parser.error("--height_diagnostic_warmup_steps must be non-negative")
 if args_cli.height_diagnostic_levels <= 1:
     parser.error("--height_diagnostic_levels must be greater than one")
+if args_cli.height_transition_hold_s <= 2.0:
+    parser.error("--height_transition_hold_s must be greater than two seconds")
+if args_cli.height_transition_rate_mps <= 0.0:
+    parser.error("--height_transition_rate_mps must be positive")
+if (
+    args_cli.height_transition_ankle_roll_action_scale is not None
+    and args_cli.height_transition_ankle_roll_action_scale < 0.0
+):
+    parser.error("--height_transition_ankle_roll_action_scale must be non-negative")
+try:
+    args_cli.height_transition_sequence = tuple(
+        float(value.strip())
+        for value in args_cli.height_transition_sequence.split(",")
+        if value.strip()
+    )
+except ValueError as error:
+    parser.error(f"--height_transition_sequence contains a non-numeric height: {error}")
+if not args_cli.height_transition_sequence:
+    parser.error("--height_transition_sequence must contain at least one height")
+if args_cli.startup_trace_steps <= 0:
+    parser.error("--startup_trace_steps must be positive")
+if args_cli.sanitize_actor_steps <= 0:
+    parser.error("--sanitize_actor_steps must be positive")
+if args_cli.sanitize_actor_rounds <= 0:
+    parser.error("--sanitize_actor_rounds must be positive")
+if args_cli.sanitize_actor_learning_rate <= 0.0:
+    parser.error("--sanitize_actor_learning_rate must be positive")
+for name in (
+    "distill_height_response_collect_steps",
+    "distill_height_response_optimization_steps",
+    "distill_height_response_batch_size",
+):
+    if getattr(args_cli, name) <= 0:
+        parser.error(f"--{name} must be positive")
+if args_cli.distill_height_response_warmup_steps < 0:
+    parser.error("--distill_height_response_warmup_steps must be non-negative")
+if args_cli.distill_height_response_learning_rate <= 0.0:
+    parser.error("--distill_height_response_learning_rate must be positive")
+if args_cli.distill_height_response_target_weight < 1.0:
+    parser.error("--distill_height_response_target_weight must be at least one")
+if args_cli.distill_height_response_low >= args_cli.distill_height_response_high:
+    parser.error("height-response low target must be below the high target")
+try:
+    args_cli.distill_height_response_delta = tuple(
+        (int(index), float(delta))
+        for item in args_cli.distill_height_response_delta.split(",")
+        for index, delta in (item.strip().split(":"),)
+    )
+except (TypeError, ValueError) as error:
+    parser.error(f"invalid --distill_height_response_delta: {error}")
+if not args_cli.distill_height_response_delta:
+    parser.error("--distill_height_response_delta must not be empty")
 # always enable cameras to record video
 if args_cli.video:
     args_cli.enable_cameras = True
@@ -193,6 +528,9 @@ from booster_train.tasks.manager_based.fall_recovery.wbc_stand_up import (
     mirror_joint_values,
     reset_from_fallen_dataset,
 )
+from booster_train.tasks.manager_based.height_tracking.observations import (
+    scaled_last_action,
+)
 from k1_wbc_export_manifest import write_export_manifest
 from isaaclab.envs import (
     DirectMARLEnv,
@@ -201,6 +539,7 @@ from isaaclab.envs import (
     ManagerBasedRLEnvCfg,
     multi_agent_to_single_agent,
 )
+from isaaclab.utils import math as math_utils
 from isaaclab.utils.assets import retrieve_file_path
 from isaaclab.utils.dict import print_dict
 from isaaclab.utils.pretrained_checkpoint import get_published_pretrained_checkpoint
@@ -220,6 +559,10 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     # override configurations with non-hydra CLI arguments
     agent_cfg = cli_args.update_rsl_rl_cfg(agent_cfg, args_cli)
     env_cfg.scene.num_envs = args_cli.num_envs if args_cli.num_envs is not None else env_cfg.scene.num_envs
+    if args_cli.height_transition_env_spacing is not None:
+        if args_cli.height_transition_env_spacing < 0.0:
+            raise ValueError("--height_transition_env_spacing must be non-negative")
+        env_cfg.scene.env_spacing = args_cli.height_transition_env_spacing
 
     # set the environment seed
     # note: certain randomizations occur in the environment initialization so we set the seed here
@@ -288,6 +631,248 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             raise ValueError("--height_diagnostic_standing_resets requires --height_diagnostic_output")
         env_cfg.events.reset_base.params["standing_ratio"] = 1.0
         env_cfg.events.reset_base.params["random_fallen_ratio"] = 0.0
+    if args_cli.height_transition_output is not None:
+        # The default K1 episode is 32 seconds, shorter than the complete
+        # seven-command acceptance sequence. Keep timeout resets out of the
+        # transition metrics so only genuine invalid states count as failures.
+        env_cfg.episode_length_s = max(
+            env_cfg.episode_length_s,
+            len(args_cli.height_transition_sequence) * args_cli.height_transition_hold_s + 5.0,
+        )
+        action_cfg = env_cfg.actions.joint_pos
+        if args_cli.height_transition_command_range is not None:
+            command_minimum, command_maximum = args_cli.height_transition_command_range
+            if command_minimum >= command_maximum:
+                raise ValueError(
+                    "--height_transition_command_range MIN must be below MAX"
+                )
+            env_cfg.commands.height.ranges.height = (
+                command_minimum,
+                command_maximum,
+            )
+        if args_cli.height_transition_posture_exponent is not None:
+            if args_cli.height_transition_posture_exponent <= 0.0:
+                raise ValueError(
+                    "--height_transition_posture_exponent must be positive"
+                )
+            action_cfg.height_posture_exponent = (
+                args_cli.height_transition_posture_exponent
+            )
+        if args_cli.height_transition_ankle_roll_position_scale is not None:
+            multiplier = args_cli.height_transition_ankle_roll_position_scale
+            if multiplier < 0.0:
+                raise ValueError(
+                    "--height_transition_ankle_roll_position_scale must be non-negative"
+                )
+            position_scale = list(action_cfg.position_scale)
+            for joint_index in (15, 21):
+                position_scale[joint_index] *= multiplier
+            action_cfg.position_scale = position_scale
+        if args_cli.height_transition_ankle_roll_contract_scale is not None:
+            multiplier = args_cli.height_transition_ankle_roll_contract_scale
+            if multiplier < 0.0:
+                raise ValueError(
+                    "--height_transition_ankle_roll_contract_scale must be non-negative"
+                )
+            position_scale = list(action_cfg.position_scale)
+            for joint_index in (15, 21):
+                position_scale[joint_index] *= multiplier
+            action_cfg.position_scale = position_scale
+            for observation_group in (
+                env_cfg.observations.policy,
+                env_cfg.observations.critic,
+            ):
+                observation_group.actions.func = scaled_last_action
+                observation_group.actions.params = {
+                    "joint_indices": (15, 21),
+                    "scale": multiplier,
+                }
+        if args_cli.height_transition_ankle_roll_history_scale is not None:
+            multiplier = args_cli.height_transition_ankle_roll_history_scale
+            if multiplier < 0.0:
+                raise ValueError(
+                    "--height_transition_ankle_roll_history_scale must be non-negative"
+                )
+            for observation_group in (
+                env_cfg.observations.policy,
+                env_cfg.observations.critic,
+            ):
+                observation_group.actions.func = scaled_last_action
+                observation_group.actions.params = {
+                    "joint_indices": (15, 21),
+                    "scale": multiplier,
+                }
+        if args_cli.height_transition_posture_low_exponent is not None:
+            if args_cli.height_transition_posture_low_exponent <= 0.0:
+                raise ValueError(
+                    "--height_transition_posture_low_exponent must be positive"
+                )
+            action_cfg.height_posture_low_exponent = (
+                args_cli.height_transition_posture_low_exponent
+            )
+        if args_cli.height_transition_posture_low_handoff_height is not None:
+            posture_minimum, posture_maximum = action_cfg.height_posture_range
+            handoff_height = args_cli.height_transition_posture_low_handoff_height
+            if not posture_minimum < handoff_height < posture_maximum:
+                raise ValueError(
+                    "--height_transition_posture_low_handoff_height must be inside "
+                    "the posture range"
+                )
+            action_cfg.height_posture_low_handoff_height = handoff_height
+        if args_cli.height_transition_posture_phase_knots is not None:
+            try:
+                phase_knots = [
+                    tuple(float(value) for value in pair.split(":"))
+                    for pair in args_cli.height_transition_posture_phase_knots.split(",")
+                ]
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "--height_transition_posture_phase_knots must use height:phase pairs"
+                ) from exc
+            if any(len(pair) != 2 for pair in phase_knots):
+                raise ValueError(
+                    "--height_transition_posture_phase_knots must use height:phase pairs"
+                )
+            action_cfg.height_posture_phase_knots = phase_knots
+        if args_cli.height_transition_posture_minimum is not None:
+            _, posture_maximum = action_cfg.height_posture_range
+            if args_cli.height_transition_posture_minimum >= posture_maximum:
+                raise ValueError(
+                    "--height_transition_posture_minimum must be below the maximum"
+                )
+            action_cfg.height_posture_range = (
+                args_cli.height_transition_posture_minimum,
+                posture_maximum,
+            )
+        if args_cli.height_transition_posture_depth_scale is not None:
+            depth_scale = args_cli.height_transition_posture_depth_scale
+            if depth_scale <= 0.0:
+                raise ValueError(
+                    "--height_transition_posture_depth_scale must be positive"
+                )
+            low_center = action_cfg.height_posture_center
+            high_center = action_cfg.height_posture_high_center
+            if low_center is None or high_center is None:
+                raise ValueError(
+                    "posture depth scaling requires low and high posture centers"
+                )
+            scaled_low_center = list(low_center)
+            for joint_index in (10, 13, 16, 19):
+                candidate = (
+                    high_center[joint_index]
+                    + depth_scale
+                    * (low_center[joint_index] - high_center[joint_index])
+                )
+                minimum = (
+                    action_cfg.position_minimum[joint_index]
+                    + action_cfg.position_target_margin
+                )
+                maximum = (
+                    action_cfg.position_maximum[joint_index]
+                    - action_cfg.position_target_margin
+                )
+                scaled_low_center[joint_index] = min(
+                    max(candidate, minimum), maximum
+                )
+            action_cfg.height_posture_center = scaled_low_center
+        if args_cli.height_transition_residual_base_maximum_scale is not None:
+            action_cfg.height_residual_base_maximum_scale = (
+                args_cli.height_transition_residual_base_maximum_scale
+            )
+        if args_cli.height_transition_residual_handoff_scale is not None:
+            action_cfg.height_residual_handoff_minimum_scale = (
+                args_cli.height_transition_residual_handoff_scale
+            )
+        if args_cli.height_transition_deep_handoff_scale is not None:
+            action_cfg.height_residual_deep_handoff_minimum_scale = (
+                args_cli.height_transition_deep_handoff_scale
+            )
+        if args_cli.height_transition_deep_handoff_range is not None:
+            handoff_minimum, handoff_maximum = (
+                args_cli.height_transition_deep_handoff_range
+            )
+            if handoff_minimum >= handoff_maximum:
+                raise ValueError(
+                    "--height_transition_deep_handoff_range MIN must be below MAX"
+                )
+            action_cfg.height_residual_deep_handoff_range = (
+                handoff_minimum,
+                handoff_maximum,
+            )
+        if args_cli.height_transition_deep_handoff_sagittal_only:
+            action_cfg.height_residual_deep_handoff_joint_names = list(
+                action_cfg.height_residual_amplify_joint_names
+            )
+        if args_cli.height_transition_measured_conditioning_blend is not None:
+            blend = args_cli.height_transition_measured_conditioning_blend
+            if not 0.0 <= blend <= 1.0:
+                raise ValueError(
+                    "--height_transition_measured_conditioning_blend must be within [0, 1]"
+                )
+            action_cfg.height_posture_measured_blend = blend
+            action_cfg.height_residual_measured_blend = blend
+        for argument_name, attribute_name in (
+            (
+                "height_transition_posture_measured_blend",
+                "height_posture_measured_blend",
+            ),
+            (
+                "height_transition_residual_measured_blend",
+                "height_residual_measured_blend",
+            ),
+        ):
+            blend = getattr(args_cli, argument_name)
+            if blend is None:
+                continue
+            if not 0.0 <= blend <= 1.0:
+                raise ValueError(f"--{argument_name} must be within [0, 1]")
+            setattr(action_cfg, attribute_name, blend)
+        if args_cli.height_transition_residual_conditioning_maximum:
+            action_cfg.height_residual_conditioning_maximum = True
+        if args_cli.height_transition_leg_damping_multiplier is not None:
+            multiplier = args_cli.height_transition_leg_damping_multiplier
+            if multiplier <= 0.0:
+                raise ValueError(
+                    "--height_transition_leg_damping_multiplier must be positive"
+                )
+            for actuator_name in ("legs", "feet"):
+                actuator_cfg = env_cfg.scene.robot.actuators[actuator_name]
+                if isinstance(actuator_cfg.damping, dict):
+                    actuator_cfg.damping = {
+                        name: value * multiplier
+                        for name, value in actuator_cfg.damping.items()
+                    }
+                else:
+                    actuator_cfg.damping *= multiplier
+        if args_cli.height_transition_leg_target_velocity_limit is not None:
+            limit = args_cli.height_transition_leg_target_velocity_limit
+            if limit <= 0.0:
+                raise ValueError(
+                    "--height_transition_leg_target_velocity_limit must be positive"
+                )
+            velocity_limit = list(action_cfg.position_target_velocity_limit)
+            velocity_limit[10:] = [limit] * (len(velocity_limit) - 10)
+            action_cfg.position_target_velocity_limit = velocity_limit
+        if args_cli.height_transition_bad_orientation_limit_rad is not None:
+            env_cfg.terminations.bad_orientation.params["limit_angle"] = (
+                args_cli.height_transition_bad_orientation_limit_rad
+            )
+        if args_cli.height_transition_minimum_root_height_m is not None:
+            env_cfg.terminations.base_too_low.params["minimum_height"] = (
+                args_cli.height_transition_minimum_root_height_m
+            )
+    if any(
+        output is not None
+        for output in (
+            args_cli.startup_trace_output,
+            args_cli.height_transition_output,
+            args_cli.height_diagnostic_output,
+        )
+    ):
+        # Deployment uses deterministic sensors. Keep acceptance diagnostics on
+        # that same observation contract instead of masking a brittle policy
+        # with fresh training noise at every step.
+        env_cfg.observations.policy.enable_corruption = False
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
@@ -380,6 +965,914 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
     else:
         normalizer = None
 
+    if args_cli.startup_trace_output is not None:
+        if not task_spec.kwargs.get("wbc_height_tracking", False):
+            raise ValueError("--startup_trace_output requires a WBC height-tracking task")
+        base_env = env.unwrapped
+        height_command = base_env.command_manager.get_term("height")
+        action_term = base_env.action_manager.get_term("joint_pos")
+        robot = base_env.scene["robot"]
+        target = torch.full((base_env.num_envs,), 0.72, device=base_env.device)
+        height_command.set_manual_height(target)
+        env.reset()
+        height_command.set_manual_height(target)
+
+        def trace_observations():
+            current = env.get_observations()
+            if version("rsl-rl-lib").startswith("2.3."):
+                return current[0]
+            return current
+
+        observations = trace_observations()
+        initial_observation = observations[0].detach().cpu().tolist()
+        samples = []
+        for step in range(args_cli.startup_trace_steps):
+            with torch.inference_mode():
+                actions = policy(observations)
+                observations, _, dones, _ = env.step(actions)
+            height_command.set_manual_height(target)
+            samples.append(
+                {
+                    "step": step + 1,
+                    "time_s": (step + 1) * float(base_env.step_dt),
+                    "root_position": robot.data.root_pos_w[0].detach().cpu().tolist(),
+                    "root_quaternion": robot.data.root_quat_w[0].detach().cpu().tolist(),
+                    "root_linear_velocity_body": robot.data.root_lin_vel_b[0].detach().cpu().tolist(),
+                    "root_angular_velocity_body": robot.data.root_ang_vel_b[0].detach().cpu().tolist(),
+                    "joint_position": robot.data.joint_pos[0, action_term._joint_ids].detach().cpu().tolist(),
+                    "joint_velocity": robot.data.joint_vel[0, action_term._joint_ids].detach().cpu().tolist(),
+                    "raw_action": actions[0].detach().cpu().tolist(),
+                    "executed_action": base_env.action_manager.action[0].detach().cpu().tolist(),
+                    "processed_target": action_term.processed_actions[0].detach().cpu().tolist(),
+                    "measured_height": float(height_command.measured_height[0]),
+                    "done": bool(dones[0]),
+                }
+            )
+        actuator_delay_steps = {}
+        for actuator_name, actuator in robot.actuators.items():
+            delay_buffer = getattr(actuator, "positions_delay_buffer", None)
+            if delay_buffer is not None:
+                actuator_delay_steps[actuator_name] = (
+                    delay_buffer.time_lags.detach().cpu().tolist()
+                )
+
+        report = {
+            "checkpoint": resume_path,
+            "task": args_cli.task,
+            "actuator_delay_steps": actuator_delay_steps,
+            "step_dt": float(base_env.step_dt),
+            "joint_names": list(action_term._joint_names),
+            "initial_observation": initial_observation,
+            "samples": samples,
+        }
+        output_path = os.path.abspath(args_cli.startup_trace_output)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as output_file:
+            json.dump(report, output_file, indent=2, sort_keys=True)
+            output_file.write("\n")
+        print(json.dumps(report, indent=2, sort_keys=True))
+        env.close()
+        return
+
+    if args_cli.sanitize_actor_output is not None:
+        if not task_spec.kwargs.get("wbc_height_tracking", False):
+            raise ValueError("--sanitize_actor_output requires a WBC height-tracking task")
+        import copy
+        import math
+
+        base_env = env.unwrapped
+        action_clip = float(agent_cfg.clip_actions)
+        if not math.isfinite(action_clip) or action_clip <= 0.0:
+            raise ValueError(f"actor sanitization requires a positive finite action clip, got {action_clip}")
+        actor = policy_nn.actor
+        if not isinstance(actor, torch.nn.Sequential) or not isinstance(actor[-1], torch.nn.Linear):
+            raise TypeError("actor sanitization requires a Sequential actor with a final Linear layer")
+        teacher_actor = copy.deepcopy(actor).eval()
+        output_layer: torch.nn.Linear = actor[-1]
+        observation_manager = base_env.observation_manager
+        term_names = observation_manager.active_terms["policy"]
+        term_dims = observation_manager.group_obs_term_dim["policy"]
+        action_term_index = term_names.index("actions")
+        action_history_start = sum(math.prod(dim) for dim in term_dims[:action_term_index])
+        action_history_width = math.prod(term_dims[action_term_index])
+        action_dim = output_layer.out_features
+        if action_history_width % action_dim:
+            raise ValueError(
+                "action observation history is not divisible by the policy action dimension: "
+                f"{action_history_width} vs {action_dim}"
+            )
+        history_length = action_history_width // action_dim
+        action_history_stop = action_history_start + action_history_width
+        optimizer = torch.optim.Adam(actor.parameters(), lr=args_cli.sanitize_actor_learning_rate)
+        sample_count = 0
+        round_reports = []
+
+        def policy_observations():
+            current = env.get_observations()
+            if version("rsl-rl-lib").startswith("2.3."):
+                return current[0]
+            return current
+
+        for round_index in range(args_cli.sanitize_actor_rounds):
+            env.reset()
+            observations = policy_observations()
+            teacher_history = torch.zeros(
+                (base_env.num_envs, history_length, action_dim),
+                device=base_env.device,
+            )
+            raw_loss_sum = 0.0
+            executed_error_sum = 0.0
+            saturation_sum = 0.0
+            for _ in range(args_cli.sanitize_actor_steps):
+                with torch.no_grad():
+                    teacher_observations = observations.clone()
+                    teacher_observations[:, action_history_start:action_history_stop] = (
+                        teacher_history.reshape(base_env.num_envs, -1)
+                    )
+                    teacher_raw_actions = teacher_actor(teacher_observations)
+                    teacher_targets = torch.clamp(teacher_raw_actions, -action_clip, action_clip)
+
+                student_actions = actor(observations.detach())
+                loss = torch.nn.functional.smooth_l1_loss(
+                    student_actions,
+                    teacher_targets,
+                    beta=0.25,
+                )
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                torch.nn.utils.clip_grad_norm_(actor.parameters(), 5.0)
+                optimizer.step()
+                with torch.no_grad():
+                    updated_student_actions = actor(observations)
+                    executed_student_actions = torch.clamp(updated_student_actions, -action_clip, action_clip)
+                    raw_loss_sum += float(loss)
+                    executed_error_sum += float(
+                        torch.mean(torch.square(executed_student_actions - teacher_targets))
+                    )
+                    saturation_sum += float((torch.abs(updated_student_actions) >= action_clip).float().mean())
+                    sample_count += base_env.num_envs
+                    # Keep data on the known-good teacher state distribution.
+                    # A partially distilled student otherwise falls immediately
+                    # and poisons the remaining supervised batches.
+                    executed_actions = teacher_targets
+                    observations, _, dones, _ = env.step(executed_actions)
+                    teacher_history = torch.roll(teacher_history, shifts=-1, dims=1)
+                    teacher_history[:, -1] = teacher_targets
+                    if torch.any(dones):
+                        teacher_history[dones.bool()] = 0.0
+            round_report = {
+                "round": round_index + 1,
+                "samples": sample_count,
+                "action_clip": action_clip,
+                "raw_actor_smooth_l1": raw_loss_sum / args_cli.sanitize_actor_steps,
+                "executed_action_mse": executed_error_sum / args_cli.sanitize_actor_steps,
+                "raw_actor_saturation_fraction": saturation_sum / args_cli.sanitize_actor_steps,
+            }
+            round_reports.append(round_report)
+            print(f"[INFO] Actor sanitization round: {round_report}")
+
+        checkpoint = torch.load(resume_path, map_location="cpu", weights_only=False)
+        checkpoint["model_state_dict"] = {
+            key: value.detach().cpu() for key, value in policy_nn.state_dict().items()
+        }
+        checkpoint["infos"] = {
+            "actor_output_sanitization": {
+                "source_checkpoint": resume_path,
+                "action_clip": [-action_clip, action_clip],
+                "rounds": round_reports,
+            }
+        }
+        output_path = os.path.abspath(args_cli.sanitize_actor_output)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        torch.save(checkpoint, output_path)
+        print(f"[INFO] Wrote sanitized actor checkpoint: {output_path}")
+        env.close()
+        return
+
+    if args_cli.distill_height_response_output is not None:
+        if not task_spec.kwargs.get("wbc_height_tracking", False):
+            raise ValueError(
+                "--distill_height_response_output requires a WBC height-tracking task"
+            )
+        import copy
+        import math
+
+        base_env = env.unwrapped
+        actor = policy_nn.actor
+        if not isinstance(actor, torch.nn.Sequential) or not isinstance(
+            actor[-1], torch.nn.Linear
+        ):
+            raise TypeError("height-response distillation requires a Sequential actor")
+        output_layer: torch.nn.Linear = actor[-1]
+        action_count = output_layer.out_features
+        response_indices = tuple(index for index, _ in args_cli.distill_height_response_delta)
+        if len(set(response_indices)) != len(response_indices) or any(
+            index < 0 or index >= action_count for index in response_indices
+        ):
+            raise ValueError("height-response action indices are invalid")
+        response_target = torch.tensor(
+            [delta for _, delta in args_cli.distill_height_response_delta],
+            dtype=torch.float32,
+            device=base_env.device,
+        )
+        teacher_actor = copy.deepcopy(actor).eval()
+        for parameter in actor.parameters():
+            parameter.requires_grad_(args_cli.distill_height_response_train_all_layers)
+        if not args_cli.distill_height_response_train_all_layers:
+            for parameter in output_layer.parameters():
+                parameter.requires_grad_(True)
+
+        observation_manager = base_env.observation_manager
+        term_names = observation_manager.active_terms["policy"]
+        term_dims = observation_manager.group_obs_term_dim["policy"]
+        command_term_index = term_names.index("height_command")
+        command_history_start = sum(
+            math.prod(dim) for dim in term_dims[:command_term_index]
+        )
+        command_history_width = math.prod(term_dims[command_term_index])
+        command_history_stop = command_history_start + command_history_width
+        height_command = base_env.command_manager.get_term("height")
+        low_targets = torch.full(
+            (base_env.num_envs,),
+            args_cli.distill_height_response_low,
+            device=base_env.device,
+        )
+
+        def policy_observations():
+            current = env.get_observations()
+            if version("rsl-rl-lib").startswith("2.3."):
+                return current[0]
+            return current
+
+        height_command.set_manual_height(low_targets)
+        env.reset()
+        height_command.set_manual_height(low_targets)
+        observations = policy_observations()
+        collected = []
+        collection_steps = (
+            args_cli.distill_height_response_warmup_steps
+            + args_cli.distill_height_response_collect_steps
+        )
+        for step in range(collection_steps):
+            with torch.inference_mode():
+                teacher_actions = teacher_actor(observations)
+                observations, _, dones, _ = env.step(teacher_actions)
+            height_command.set_manual_height(low_targets)
+            if torch.any(dones):
+                observations = policy_observations()
+            if step >= args_cli.distill_height_response_warmup_steps:
+                collected.append(observations.detach().clone())
+        observation_dataset = torch.cat(collected, dim=0)
+
+        trainable_parameters = [parameter for parameter in actor.parameters() if parameter.requires_grad]
+        optimizer = torch.optim.Adam(
+            trainable_parameters,
+            lr=args_cli.distill_height_response_learning_rate,
+        )
+        loss_history = []
+        for _ in range(args_cli.distill_height_response_optimization_steps):
+            indexes = torch.randint(
+                observation_dataset.shape[0],
+                (min(args_cli.distill_height_response_batch_size, observation_dataset.shape[0]),),
+                device=base_env.device,
+            )
+            sampled = observation_dataset[indexes]
+            low_observations = sampled.clone()
+            high_observations = sampled.clone()
+            low_observations[:, command_history_start:command_history_stop] = (
+                args_cli.distill_height_response_low
+            )
+            high_observations[:, command_history_start:command_history_stop] = (
+                args_cli.distill_height_response_high
+            )
+            with torch.no_grad():
+                teacher_low = teacher_actor(low_observations)
+                teacher_high = teacher_actor(high_observations)
+                low_target = teacher_low
+                high_target = teacher_high
+                if args_cli.distill_height_response_anchor == "low":
+                    high_target = teacher_high.clone()
+                    high_target[:, response_indices] = (
+                        teacher_low[:, response_indices] + response_target
+                    )
+                else:
+                    low_target = teacher_low.clone()
+                    low_target[:, response_indices] = (
+                        teacher_high[:, response_indices] - response_target
+                    )
+            student_low = actor(low_observations)
+            student_high = actor(high_observations)
+            low_loss = torch.nn.functional.mse_loss(student_low, low_target)
+            selected_low_loss = torch.nn.functional.mse_loss(
+                student_low[:, response_indices],
+                low_target[:, response_indices],
+            )
+            high_loss = torch.nn.functional.mse_loss(student_high, high_target)
+            loss = (
+                low_loss
+                + high_loss
+                + (args_cli.distill_height_response_target_weight - 1.0) * selected_low_loss
+            )
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(trainable_parameters, 5.0)
+            optimizer.step()
+            loss_history.append((float(low_loss), float(high_loss)))
+
+        with torch.inference_mode():
+            validation = observation_dataset[: min(4096, observation_dataset.shape[0])]
+            low_validation = validation.clone()
+            high_validation = validation.clone()
+            low_validation[:, command_history_start:command_history_stop] = (
+                args_cli.distill_height_response_low
+            )
+            high_validation[:, command_history_start:command_history_stop] = (
+                args_cli.distill_height_response_high
+            )
+            learned_delta = (
+                actor(high_validation)[:, response_indices]
+                - actor(low_validation)[:, response_indices]
+            ).mean(dim=0)
+
+        checkpoint = torch.load(resume_path, map_location="cpu", weights_only=False)
+        checkpoint["model_state_dict"] = {
+            key: value.detach().cpu() for key, value in policy_nn.state_dict().items()
+        }
+        infos = dict(checkpoint.get("infos") or {})
+        infos["height_response_distillation"] = {
+            "source_checkpoint": resume_path,
+            "observation_count": int(observation_dataset.shape[0]),
+            "low_height_m": args_cli.distill_height_response_low,
+            "high_height_m": args_cli.distill_height_response_high,
+            "anchor": args_cli.distill_height_response_anchor,
+            "train_all_layers": args_cli.distill_height_response_train_all_layers,
+            "target_weight": args_cli.distill_height_response_target_weight,
+            "action_indices": list(response_indices),
+            "target_action_delta": response_target.detach().cpu().tolist(),
+            "learned_action_delta": learned_delta.detach().cpu().tolist(),
+            "final_low_loss": loss_history[-1][0],
+            "final_high_loss": loss_history[-1][1],
+        }
+        checkpoint["infos"] = infos
+        output_path = os.path.abspath(args_cli.distill_height_response_output)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        torch.save(checkpoint, output_path)
+        print(f"[INFO] Wrote height-response checkpoint: {output_path}")
+        print(json.dumps(infos["height_response_distillation"], indent=2))
+        env.close()
+        return
+
+    if args_cli.height_transition_output is not None:
+        if not task_spec.kwargs.get("wbc_height_tracking", False):
+            raise ValueError("--height_transition_output requires a WBC height-tracking task")
+        base_env = env.unwrapped
+        height_command = base_env.command_manager.get_term("height")
+        robot = base_env.scene["robot"]
+        action_term = base_env.action_manager.get_term("joint_pos")
+        reward_term_names = tuple(base_env.reward_manager._term_names)
+        termination_term_names = tuple(base_env.termination_manager._term_names)
+        sequence = list(args_cli.height_transition_sequence)
+        dt = float(base_env.step_dt)
+        steps_per_segment = round(args_cli.height_transition_hold_s / dt)
+        steady_steps = round(2.0 / dt)
+        settle_window_steps = round(1.0 / dt)
+        command_values = torch.full(
+            (base_env.num_envs,), sequence[0], device=base_env.device
+        )
+        height_command.set_manual_height(command_values)
+        env.reset()
+        height_command.set_manual_height(command_values)
+        if args_cli.height_transition_initial_yaw_rad is not None:
+            root_pose = robot.data.root_state_w[:, :7].clone()
+            zero = torch.zeros(base_env.num_envs, device=base_env.device)
+            fixed_yaw = torch.full_like(
+                zero, args_cli.height_transition_initial_yaw_rad
+            )
+            root_pose[:, 3:7] = math_utils.quat_from_euler_xyz(
+                zero, zero, fixed_yaw
+            )
+            robot.write_root_pose_to_sim(root_pose)
+        _, _, initial_root_yaw = math_utils.euler_xyz_from_quat(
+            robot.data.root_quat_w
+        )
+
+        def policy_observations():
+            current = env.get_observations()
+            if version("rsl-rl-lib").startswith("2.3."):
+                current = current[0]
+            if args_cli.height_policy_command_offset_m:
+                current = current.clone()
+                current[:, -5:] += args_cli.height_policy_command_offset_m
+            if args_cli.height_policy_command_minimum_m is not None:
+                current = current.clone()
+                current[:, -5:] = torch.clamp_min(
+                    current[:, -5:], args_cli.height_policy_command_minimum_m
+                )
+            return current
+
+        observations = policy_observations()
+        previous_targets = action_term.processed_actions.detach().clone()
+        previous_policy_actions = base_env.action_manager.action.detach().clone()
+        segment_reports = []
+        total_terminations = 0
+        total_invalid_states = 0
+        total_timeouts = 0
+        for segment_index, requested_height in enumerate(sequence):
+            measured_rows = []
+            command_rows = []
+            planar_speed_rows = []
+            angular_speed_rows = []
+            joint_speed_rows = []
+            joint_velocity_rows = []
+            joint_position_rows = []
+            joint_target_rows = []
+            joint_torque_rows = []
+            target_delta_rows = []
+            joint_target_delta_rows = []
+            policy_action_delta_rows = []
+            joint_policy_action_delta_rows = []
+            policy_action_clip_rows = []
+            joint_policy_action_clip_rows = []
+            raw_action_rows = []
+            executed_action_rows = []
+            command_center_rows = []
+            reward_term_rows = []
+            tilt_rows = []
+            done_rows = []
+            invalid_rows = []
+            timeout_rows = []
+            termination_term_rows = {
+                name: [] for name in termination_term_names
+            }
+            for _ in range(steps_per_segment):
+                maximum_step = args_cli.height_transition_rate_mps * dt
+                difference = requested_height - command_values
+                command_values += torch.clamp(difference, -maximum_step, maximum_step)
+                height_command.set_manual_height(command_values)
+                observations = policy_observations()
+                with torch.inference_mode():
+                    actions = policy(observations)
+                    if args_cli.height_transition_ankle_roll_action_scale is not None:
+                        actions = actions.clone()
+                        actions[:, [15, 21]] *= (
+                            args_cli.height_transition_ankle_roll_action_scale
+                        )
+                    if args_cli.height_transition_zero_policy_actions:
+                        actions = torch.zeros_like(actions)
+                    elif args_cli.height_transition_zero_sagittal_actions:
+                        actions = actions.clone()
+                        actions[:, [10, 13, 14, 16, 19, 20]] = 0.0
+                    elif args_cli.height_transition_zero_ankle_roll_actions:
+                        actions = actions.clone()
+                        actions[:, [15, 21]] = 0.0
+                    observations, _, dones, _ = env.step(actions)
+                height_command.set_manual_height(command_values)
+                reward_term_rows.append(
+                    base_env.reward_manager._step_reward.detach().cpu().clone()
+                )
+                processed_targets = action_term.processed_actions.detach()
+                policy_actions = base_env.action_manager.action.detach()
+                raw_action_rows.append(actions.detach().cpu())
+                executed_action_rows.append(policy_actions.detach().cpu())
+                command_center_rows.append(action_term.command_center.detach().cpu())
+                measured_rows.append(height_command.measured_height.detach().cpu())
+                command_rows.append(height_command.target_height.detach().cpu())
+                planar_speed_rows.append(
+                    torch.linalg.vector_norm(robot.data.root_lin_vel_b[:, :2], dim=1).detach().cpu()
+                )
+                angular_speed_rows.append(
+                    torch.linalg.vector_norm(robot.data.root_ang_vel_b[:, :2], dim=1).detach().cpu()
+                )
+                joint_velocity = robot.data.joint_vel[:, action_term._joint_ids]
+                joint_velocity_rows.append(joint_velocity.detach().cpu())
+                joint_position_rows.append(
+                    robot.data.joint_pos[:, action_term._joint_ids].detach().cpu()
+                )
+                joint_target_rows.append(processed_targets.detach().cpu())
+                joint_torque_rows.append(
+                    robot.data.applied_torque[:, action_term._joint_ids].detach().cpu()
+                )
+                joint_speed_rows.append(
+                    torch.sqrt(torch.mean(torch.square(joint_velocity), dim=1)).detach().cpu()
+                )
+                joint_target_delta = processed_targets - previous_targets
+                joint_target_delta_rows.append(joint_target_delta.detach().cpu())
+                target_delta_rows.append(
+                    torch.sqrt(torch.mean(torch.square(joint_target_delta), dim=1))
+                    .detach()
+                    .cpu()
+                )
+                joint_policy_action_delta = policy_actions - previous_policy_actions
+                joint_policy_action_delta_rows.append(joint_policy_action_delta.detach().cpu())
+                policy_action_delta_rows.append(
+                    torch.sqrt(torch.mean(torch.square(joint_policy_action_delta), dim=1))
+                    .detach()
+                    .cpu()
+                )
+                joint_policy_action_clip = (torch.abs(policy_actions) >= 3.999).float()
+                joint_policy_action_clip_rows.append(joint_policy_action_clip.detach().cpu())
+                policy_action_clip_rows.append(
+                    torch.mean(joint_policy_action_clip, dim=1).detach().cpu()
+                )
+                tilt_rows.append(
+                    torch.acos(torch.clamp(-robot.data.projected_gravity_b[:, 2], -1.0, 1.0))
+                    .detach()
+                    .cpu()
+                )
+                done_rows.append(dones.detach().cpu().bool())
+                invalid_rows.append(base_env.termination_manager.terminated.detach().cpu().bool())
+                timeout_rows.append(base_env.termination_manager.time_outs.detach().cpu().bool())
+                for name in termination_term_names:
+                    termination_term_rows[name].append(
+                        base_env.termination_manager.get_term(name)
+                        .detach()
+                        .cpu()
+                        .bool()
+                    )
+                previous_targets = processed_targets.clone()
+                previous_policy_actions = policy_actions.clone()
+
+            measured = torch.stack(measured_rows)
+            commanded = torch.stack(command_rows)
+            errors = torch.abs(measured - commanded)
+            done_matrix = torch.stack(done_rows)
+            invalid_matrix = torch.stack(invalid_rows)
+            timeout_matrix = torch.stack(timeout_rows)
+            termination_term_matrices = {
+                name: torch.stack(rows)
+                for name, rows in termination_term_rows.items()
+            }
+            total_terminations += int(done_matrix.sum())
+            total_invalid_states += int(invalid_matrix.sum())
+            total_timeouts += int(timeout_matrix.sum())
+            at_target = torch.abs(commanded[:, 0] - requested_height) < 1.0e-4
+            target_step = int(torch.where(at_target)[0][0]) if torch.any(at_target) else steps_per_segment
+            settled_times = []
+            for env_index in range(base_env.num_envs):
+                settled_time = None
+                for step in range(target_step, steps_per_segment - settle_window_steps + 1):
+                    window = errors[step : step + settle_window_steps, env_index]
+                    if torch.all(window <= 0.03):
+                        settled_time = (step - target_step) * dt
+                        break
+                settled_times.append(settled_time)
+            all_joint_velocity = torch.stack(joint_velocity_rows)
+            all_joint_target_delta = torch.stack(joint_target_delta_rows)
+            all_joint_policy_action_delta = torch.stack(joint_policy_action_delta_rows)
+            all_raw_action = torch.stack(raw_action_rows)
+            steady_slice = slice(max(target_step, steps_per_segment - steady_steps), steps_per_segment)
+            steady_measured = measured[steady_slice]
+            steady_commanded = commanded[steady_slice]
+            planar_speed = torch.stack(planar_speed_rows)[steady_slice]
+            angular_speed = torch.stack(angular_speed_rows)[steady_slice]
+            joint_speed = torch.stack(joint_speed_rows)[steady_slice]
+            joint_velocity = all_joint_velocity[steady_slice]
+            joint_position = torch.stack(joint_position_rows)[steady_slice]
+            joint_target = torch.stack(joint_target_rows)[steady_slice]
+            joint_torque = torch.stack(joint_torque_rows)[steady_slice]
+            target_delta = torch.stack(target_delta_rows)[steady_slice]
+            joint_target_delta = all_joint_target_delta[steady_slice]
+            policy_action_delta = torch.stack(policy_action_delta_rows)[steady_slice]
+            joint_policy_action_delta = all_joint_policy_action_delta[steady_slice]
+            policy_action_clip = torch.stack(policy_action_clip_rows)[steady_slice]
+            joint_policy_action_clip = torch.stack(joint_policy_action_clip_rows)[steady_slice]
+            raw_action = all_raw_action[steady_slice]
+            executed_action = torch.stack(executed_action_rows)[steady_slice]
+            command_center = torch.stack(command_center_rows)[steady_slice]
+            reward_terms = torch.stack(reward_term_rows)[steady_slice]
+            tilt = torch.stack(tilt_rows)[steady_slice]
+            valid_settling = [value for value in settled_times if value is not None]
+            signed_error = measured - commanded
+            per_env_error = torch.mean(torch.abs(steady_measured - steady_commanded), dim=0)
+            per_env_p95 = torch.quantile(torch.abs(steady_measured - steady_commanded), 0.95, dim=0)
+            failed_env_indices = torch.where(per_env_p95 > 0.03)[0].tolist()
+            terminated_envs = torch.where(torch.any(done_matrix, dim=0))[0]
+            stable_envs = torch.where(~torch.any(done_matrix, dim=0))[0]
+            precursor_window_steps = max(1, round(0.5 / dt))
+            onset_window_steps = max(1, round(2.0 / dt))
+            failed_precursor = {"velocity": [], "target_delta": [], "action_delta": [], "raw": []}
+            stable_precursor = {"velocity": [], "target_delta": [], "action_delta": [], "raw": []}
+            action_onset_leads = [[] for _ in action_term._joint_names]
+            speed_onset_leads = [[] for _ in action_term._joint_names]
+            for failed_rank, env_index_tensor in enumerate(terminated_envs):
+                env_index = int(env_index_tensor)
+                first_step = int(torch.where(done_matrix[:, env_index])[0][0])
+                start = max(0, first_step - precursor_window_steps)
+                end = max(start + 1, first_step)
+                failed_precursor["velocity"].append(all_joint_velocity[start:end, env_index])
+                failed_precursor["target_delta"].append(all_joint_target_delta[start:end, env_index])
+                failed_precursor["action_delta"].append(
+                    all_joint_policy_action_delta[start:end, env_index]
+                )
+                failed_precursor["raw"].append(all_raw_action[start:end, env_index])
+                onset_start = max(0, first_step - onset_window_steps)
+                onset_action_delta = torch.abs(
+                    all_joint_policy_action_delta[onset_start:first_step, env_index]
+                )
+                onset_speed = torch.abs(
+                    all_joint_velocity[onset_start:first_step, env_index]
+                )
+                for joint_index in range(len(action_term._joint_names)):
+                    action_crossings = torch.where(
+                        onset_action_delta[:, joint_index] > 0.02
+                    )[0]
+                    if action_crossings.numel() > 0:
+                        action_onset_leads[joint_index].append(
+                            (first_step - onset_start - int(action_crossings[0])) * dt
+                        )
+                    speed_crossings = torch.where(onset_speed[:, joint_index] > 0.2)[0]
+                    if speed_crossings.numel() > 0:
+                        speed_onset_leads[joint_index].append(
+                            (first_step - onset_start - int(speed_crossings[0])) * dt
+                        )
+                if stable_envs.numel() > 0:
+                    stable_index = int(stable_envs[failed_rank % stable_envs.numel()])
+                    stable_precursor["velocity"].append(
+                        all_joint_velocity[start:end, stable_index]
+                    )
+                    stable_precursor["target_delta"].append(
+                        all_joint_target_delta[start:end, stable_index]
+                    )
+                    stable_precursor["action_delta"].append(
+                        all_joint_policy_action_delta[start:end, stable_index]
+                    )
+                    stable_precursor["raw"].append(all_raw_action[start:end, stable_index])
+
+            def precursor_joint_report(samples, *, include_onset=False):
+                if not samples["velocity"]:
+                    return []
+                velocity_samples = torch.cat(samples["velocity"], dim=0)
+                target_delta_samples = torch.cat(samples["target_delta"], dim=0)
+                action_delta_samples = torch.cat(samples["action_delta"], dim=0)
+                raw_samples = torch.cat(samples["raw"], dim=0)
+                return [
+                    {
+                        "joint": joint_name,
+                        "speed_rms_radps": float(
+                            torch.sqrt(torch.mean(torch.square(velocity_samples[:, joint_index])))
+                        ),
+                        "target_delta_rms_rad": float(
+                            torch.sqrt(torch.mean(torch.square(target_delta_samples[:, joint_index])))
+                        ),
+                        "policy_action_delta_rms": float(
+                            torch.sqrt(torch.mean(torch.square(action_delta_samples[:, joint_index])))
+                        ),
+                        "raw_action_std": float(torch.std(raw_samples[:, joint_index])),
+                        **(
+                            {
+                                "action_delta_onset_lead_s_median": (
+                                    float(np.median(action_onset_leads[joint_index]))
+                                    if action_onset_leads[joint_index]
+                                    else None
+                                ),
+                                "action_delta_onset_fraction": (
+                                    len(action_onset_leads[joint_index])
+                                    / max(len(terminated_envs), 1)
+                                ),
+                                "speed_onset_lead_s_median": (
+                                    float(np.median(speed_onset_leads[joint_index]))
+                                    if speed_onset_leads[joint_index]
+                                    else None
+                                ),
+                                "speed_onset_fraction": (
+                                    len(speed_onset_leads[joint_index])
+                                    / max(len(terminated_envs), 1)
+                                ),
+                            }
+                            if include_onset
+                            else {}
+                        ),
+                    }
+                    for joint_index, joint_name in enumerate(action_term._joint_names)
+                ]
+
+            segment_reports.append(
+                {
+                    "segment": segment_index,
+                    "requested_height_m": requested_height,
+                    "effective_height_m": float(torch.mean(commanded[-1])),
+                    "ramp_duration_s": target_step * dt,
+                    "settled_fraction": len(valid_settling) / base_env.num_envs,
+                    "mean_settling_time_after_ramp_s": (
+                        float(np.mean(valid_settling)) if valid_settling else None
+                    ),
+                    "steady_mean_abs_error_m": float(torch.mean(torch.abs(steady_measured - steady_commanded))),
+                    "steady_p95_abs_error_m": float(torch.quantile(torch.abs(steady_measured - steady_commanded), 0.95)),
+                    "steady_height_std_m": float(torch.mean(torch.std(steady_measured, dim=0))),
+                    "maximum_overshoot_m": float(torch.clamp(signed_error, min=0.0).max()),
+                    "maximum_undershoot_m": float(torch.clamp(-signed_error, min=0.0).max()),
+                    "steady_planar_speed_rms_mps": float(torch.sqrt(torch.mean(torch.square(planar_speed)))),
+                    "steady_roll_pitch_rate_rms_radps": float(torch.sqrt(torch.mean(torch.square(angular_speed)))),
+                    "steady_joint_speed_rms_radps": float(torch.sqrt(torch.mean(torch.square(joint_speed)))),
+                    "steady_joint_target_delta_rms_rad": float(torch.sqrt(torch.mean(torch.square(target_delta)))),
+                    "steady_policy_action_delta_rms": float(
+                        torch.sqrt(torch.mean(torch.square(policy_action_delta)))
+                    ),
+                    "steady_policy_action_clip_fraction": float(torch.mean(policy_action_clip)),
+                    "steady_torso_tilt_rms_rad": float(torch.sqrt(torch.mean(torch.square(tilt)))),
+                    "maximum_torso_tilt_rad": float(torch.max(tilt)),
+                    "steady_reward_total_per_s": float(torch.mean(torch.sum(reward_terms, dim=-1))),
+                    "steady_reward_terms_per_s": {
+                        name: float(torch.mean(reward_terms[:, :, term_index]))
+                        for term_index, name in enumerate(reward_term_names)
+                    },
+                    "per_joint": [
+                        {
+                            "joint": joint_name,
+                            "speed_rms_radps": float(
+                                torch.sqrt(torch.mean(torch.square(joint_velocity[:, :, joint_index])))
+                            ),
+                            "position_mean_rad": float(
+                                torch.mean(joint_position[:, :, joint_index])
+                            ),
+                            "position_std_rad": float(
+                                torch.std(joint_position[:, :, joint_index])
+                            ),
+                            "target_mean_rad": float(
+                                torch.mean(joint_target[:, :, joint_index])
+                            ),
+                            "tracking_error_rms_rad": float(
+                                torch.sqrt(
+                                    torch.mean(
+                                        torch.square(
+                                            joint_target[:, :, joint_index]
+                                            - joint_position[:, :, joint_index]
+                                        )
+                                    )
+                                )
+                            ),
+                            "torque_rms_nm": float(
+                                torch.sqrt(torch.mean(torch.square(joint_torque[:, :, joint_index])))
+                            ),
+                            "target_delta_rms_rad": float(
+                                torch.sqrt(torch.mean(torch.square(joint_target_delta[:, :, joint_index])))
+                            ),
+                            "policy_action_delta_rms": float(
+                                torch.sqrt(
+                                    torch.mean(torch.square(joint_policy_action_delta[:, :, joint_index]))
+                                )
+                            ),
+                            "policy_action_clip_fraction": float(
+                                torch.mean(joint_policy_action_clip[:, :, joint_index])
+                            ),
+                            "raw_action_mean": float(
+                                torch.mean(raw_action[:, :, joint_index])
+                            ),
+                            "raw_action_std": float(
+                                torch.std(raw_action[:, :, joint_index])
+                            ),
+                            "executed_action_mean": float(
+                                torch.mean(executed_action[:, :, joint_index])
+                            ),
+                            "command_center_mean_rad": float(
+                                torch.mean(command_center[:, :, joint_index])
+                            ),
+                            "action_delta_clip_min_rad": float(
+                                action_term._clip[0, joint_index, 0].detach().cpu()
+                            ),
+                            "action_delta_clip_max_rad": float(
+                                action_term._clip[0, joint_index, 1].detach().cpu()
+                            ),
+                        }
+                        for joint_index, joint_name in enumerate(action_term._joint_names)
+                    ],
+                    "termination_count": int(done_matrix.sum()),
+                    "invalid_state_count": int(invalid_matrix.sum()),
+                    "timeout_count": int(timeout_matrix.sum()),
+                    "termination_terms": {
+                        name: {
+                            "count": int(matrix.sum()),
+                            "env_indices": torch.where(torch.any(matrix, dim=0))[0].tolist(),
+                        }
+                        for name, matrix in termination_term_matrices.items()
+                    },
+                    "failed_env_indices": failed_env_indices,
+                    "terminated_env_indices": terminated_envs.tolist(),
+                    "first_termination_precursor_per_joint": precursor_joint_report(
+                        failed_precursor,
+                        include_onset=True,
+                    ),
+                    "matched_stable_precursor_per_joint": precursor_joint_report(
+                        stable_precursor
+                    ),
+                    "per_env": [
+                        {
+                            "env": env_index,
+                            "mean_abs_error_m": float(per_env_error[env_index]),
+                            "p95_abs_error_m": float(per_env_p95[env_index]),
+                            "mean_height_m": float(torch.mean(steady_measured[:, env_index])),
+                            "joint_speed_rms_radps": float(
+                                torch.sqrt(torch.mean(torch.square(joint_speed[:, env_index])))
+                            ),
+                            "joint_target_delta_rms_rad": float(
+                                torch.sqrt(torch.mean(torch.square(target_delta[:, env_index])))
+                            ),
+                            "roll_pitch_rate_rms_radps": float(
+                                torch.sqrt(torch.mean(torch.square(angular_speed[:, env_index])))
+                            ),
+                            "torso_tilt_rms_rad": float(
+                                torch.sqrt(torch.mean(torch.square(tilt[:, env_index])))
+                            ),
+                            "maximum_torso_tilt_rad": float(
+                                torch.max(tilt[:, env_index])
+                            ),
+                            "policy_action_delta_rms": float(
+                                torch.sqrt(torch.mean(torch.square(policy_action_delta[:, env_index])))
+                            ),
+                            "policy_action_clip_fraction": float(
+                                torch.mean(policy_action_clip[:, env_index])
+                            ),
+                        }
+                        for env_index in range(base_env.num_envs)
+                    ],
+                }
+            )
+
+        actuator_delay_steps = {}
+        for actuator_name, actuator in robot.actuators.items():
+            delay_buffer = getattr(actuator, "positions_delay_buffer", None)
+            if delay_buffer is not None:
+                actuator_delay_steps[actuator_name] = (
+                    delay_buffer.time_lags.detach().cpu().tolist()
+                )
+
+        report = {
+            "checkpoint": resume_path,
+            "task": args_cli.task,
+            "actuator_delay_steps": actuator_delay_steps,
+            "initial_root_yaw_rad": initial_root_yaw.detach().cpu().tolist(),
+            "initial_root_yaw_override_rad": args_cli.height_transition_initial_yaw_rad,
+            "residual_base_maximum_scale": (
+                action_term.cfg.height_residual_base_maximum_scale
+            ),
+            "residual_handoff_scale": (
+                action_term.cfg.height_residual_handoff_minimum_scale
+            ),
+            "leg_damping_multiplier": args_cli.height_transition_leg_damping_multiplier,
+            "leg_target_velocity_limit": (
+                args_cli.height_transition_leg_target_velocity_limit
+            ),
+            "bad_orientation_limit_rad": (
+                env_cfg.terminations.bad_orientation.params["limit_angle"]
+            ),
+            "minimum_root_height_m": (
+                env_cfg.terminations.base_too_low.params["minimum_height"]
+            ),
+            "env_spacing_m": env_cfg.scene.env_spacing,
+            "posture_depth_scale": args_cli.height_transition_posture_depth_scale,
+            "posture_exponent": action_term.cfg.height_posture_exponent,
+            "posture_low_exponent": action_term.cfg.height_posture_low_exponent,
+            "posture_phase_knots": action_term.cfg.height_posture_phase_knots,
+            "deep_handoff_scale": (
+                action_term.cfg.height_residual_deep_handoff_minimum_scale
+            ),
+            "deep_handoff_joint_names": (
+                action_term.cfg.height_residual_deep_handoff_joint_names
+            ),
+            "posture_measured_blend": action_term.cfg.height_posture_measured_blend,
+            "residual_measured_blend": action_term.cfg.height_residual_measured_blend,
+            "residual_conditioning_maximum": (
+                action_term.cfg.height_residual_conditioning_maximum
+            ),
+            "posture_range": list(action_term.cfg.height_posture_range),
+            "height_policy_command_offset_m": args_cli.height_policy_command_offset_m,
+            "height_policy_command_minimum_m": args_cli.height_policy_command_minimum_m,
+            "zero_sagittal_policy_actions": args_cli.height_transition_zero_sagittal_actions,
+            "zero_ankle_roll_policy_actions": (
+                args_cli.height_transition_zero_ankle_roll_actions
+            ),
+            "ankle_roll_policy_action_scale": (
+                args_cli.height_transition_ankle_roll_action_scale
+            ),
+            "ankle_roll_position_scale": (
+                args_cli.height_transition_ankle_roll_position_scale
+            ),
+            "ankle_roll_contract_scale": (
+                args_cli.height_transition_ankle_roll_contract_scale
+            ),
+            "ankle_roll_history_scale": (
+                args_cli.height_transition_ankle_roll_history_scale
+            ),
+            "zero_policy_actions": args_cli.height_transition_zero_policy_actions,
+            "lift_force_scale": float(base_env.action_manager.get_term("lift").force_scale),
+            "num_envs": int(base_env.num_envs),
+            "rate_mps": args_cli.height_transition_rate_mps,
+            "hold_s": args_cli.height_transition_hold_s,
+            "sequence": sequence,
+            "total_terminations": total_terminations,
+            "total_invalid_states": total_invalid_states,
+            "total_timeouts": total_timeouts,
+            "segments": segment_reports,
+        }
+        output_path = os.path.abspath(args_cli.height_transition_output)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as output_file:
+            json.dump(report, output_file, indent=2, sort_keys=True)
+            output_file.write("\n")
+        print(json.dumps(report, indent=2, sort_keys=True))
+        env.close()
+        return
+
     if args_cli.height_diagnostic_output is not None:
         if not task_spec.kwargs.get("wbc_height_tracking", False):
             raise ValueError("--height_diagnostic_output requires a WBC height-tracking task")
@@ -425,9 +1918,15 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
         force_height_targets()
         initial_measured = height_command.measured_height.detach().cpu()
+        robot = base_env.scene["robot"]
+        action_term = base_env.action_manager.get_term("joint_pos")
+        joint_names = list(action_term._joint_names)
         obs = policy_observations()
         error_samples = [[] for _ in levels]
         measured_samples = [[] for _ in levels]
+        raw_action_samples = [[] for _ in levels]
+        processed_target_samples = [[] for _ in levels]
+        joint_position_samples = [[] for _ in levels]
         environment_error_sum = torch.zeros(base_env.num_envs, device=base_env.device)
         environment_success_sum = torch.zeros(base_env.num_envs, device=base_env.device)
         environment_sample_count = torch.zeros(base_env.num_envs, device=base_env.device)
@@ -464,6 +1963,13 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     if torch.any(mask):
                         error_samples[level_index].append(errors[mask].cpu())
                         measured_samples[level_index].append(measured[mask].cpu())
+                        raw_action_samples[level_index].append(actions[mask].detach().cpu())
+                        processed_target_samples[level_index].append(
+                            action_term.processed_actions[mask].detach().cpu()
+                        )
+                        joint_position_samples[level_index].append(
+                            robot.data.joint_pos[mask][:, action_term._joint_ids].detach().cpu()
+                        )
 
         terrain = base_env.scene.terrain
         terrain_levels = getattr(
@@ -483,6 +1989,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                 raise RuntimeError(f"no settled diagnostic samples for height level {float(target):.6f}")
             level_errors = torch.cat(error_samples[level_index])
             level_measured = torch.cat(measured_samples[level_index])
+            level_raw_actions = torch.cat(raw_action_samples[level_index])
+            level_processed_targets = torch.cat(processed_target_samples[level_index])
+            level_joint_positions = torch.cat(joint_position_samples[level_index])
             level_peak = peak_measured[mask.to(device=base_env.device)]
             level_signed_errors = level_measured - target
             level_environment_count = environment_sample_count[mask.to(device=base_env.device)].clamp(min=1.0)
@@ -522,6 +2031,22 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
                     "median_abs_error_m": float(torch.quantile(level_errors, 0.5).item()),
                     "p95_abs_error_m": float(torch.quantile(level_errors, 0.95).item()),
                     "max_abs_error_m": float(level_errors.max().item()),
+                    "mean_raw_action_by_joint": dict(
+                        zip(joint_names, level_raw_actions.mean(dim=0).tolist(), strict=True)
+                    ),
+                    "raw_action_clip_fraction_by_joint": dict(
+                        zip(
+                            joint_names,
+                            (torch.abs(level_raw_actions) >= 1.0).float().mean(dim=0).tolist(),
+                            strict=True,
+                        )
+                    ),
+                    "mean_processed_target_by_joint_rad": dict(
+                        zip(joint_names, level_processed_targets.mean(dim=0).tolist(), strict=True)
+                    ),
+                    "mean_joint_position_by_joint_rad": dict(
+                        zip(joint_names, level_joint_positions.mean(dim=0).tolist(), strict=True)
+                    ),
                     "environment_mean_abs_error_m": [
                         float(value) for value in level_environment_errors.cpu()
                     ],

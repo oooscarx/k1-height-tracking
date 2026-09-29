@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import MISSING
+from typing import ClassVar
 
 import torch
 from collections.abc import Sequence
@@ -90,6 +91,7 @@ class BoosterDelayedPDActuator(DelayedPDActuator):
     """
 
     cfg: BoosterDelayedPDActuatorCfg
+    _shared_delay_by_group: ClassVar[dict[tuple[str, int, str], torch.Tensor]] = {}
 
     def __init__(self, cfg: "BoosterDelayedPDActuatorCfg", *args, **kwargs):
         super().__init__(cfg, *args, **kwargs)
@@ -102,6 +104,45 @@ class BoosterDelayedPDActuator(DelayedPDActuator):
         v_knee = self.knee_point_velocity
         v_max = self.velocity_limit
         self._denom = (v_max - v_knee).clamp(min=1e-6)
+
+    def reset(self, env_ids: Sequence[int]):
+        super().reset(env_ids)
+        group = self.cfg.synchronized_delay_group
+        if group is None:
+            return
+
+        if env_ids is None or env_ids == slice(None):
+            indices = self._ALL_INDICES
+            buffer_env_ids = slice(None)
+        else:
+            indices = torch.as_tensor(env_ids, dtype=torch.long, device=self._device)
+            buffer_env_ids = env_ids
+        key = (str(self._device), self._num_envs, group)
+        if self.cfg.synchronized_delay_master:
+            shared = self._shared_delay_by_group.setdefault(
+                key,
+                torch.zeros(self._num_envs, dtype=torch.int, device=self._device),
+            )
+            shared[indices] = torch.randint(
+                low=self.cfg.min_delay,
+                high=self.cfg.max_delay + 1,
+                size=(indices.numel(),),
+                dtype=torch.int,
+                device=self._device,
+            )
+        elif key not in self._shared_delay_by_group:
+            raise RuntimeError(
+                f"synchronized delay master for group {group!r} must reset first"
+            )
+        shared_delay = self._shared_delay_by_group[key][indices]
+        if torch.any(shared_delay > self.cfg.max_delay):
+            raise ValueError("shared actuator delay exceeds a follower buffer")
+        self.positions_delay_buffer.set_time_lag(shared_delay, buffer_env_ids)
+        self.velocities_delay_buffer.set_time_lag(shared_delay, buffer_env_ids)
+        self.efforts_delay_buffer.set_time_lag(shared_delay, buffer_env_ids)
+        self.positions_delay_buffer.reset(buffer_env_ids)
+        self.velocities_delay_buffer.reset(buffer_env_ids)
+        self.efforts_delay_buffer.reset(buffer_env_ids)
 
     def compute(
         self, control_action: ArticulationActions, joint_pos: torch.Tensor, joint_vel: torch.Tensor
@@ -179,6 +220,12 @@ class BoosterDelayedActuatorCfg(DelayedPDActuatorCfg):
     damping: dict[str, float] | float | None = None
 
     booster_joint_cfgs: dict[str, BoosterJointCfg] | BoosterJointCfg | None = None
+
+    synchronized_delay_group: str | None = None
+    """Optional group whose actuator commands share one delay per environment."""
+
+    synchronized_delay_master: bool = False
+    """Whether this actuator samples the shared group delay on reset."""
 
     def __post_init__(self):
         if self.booster_joint_cfgs is not None:

@@ -35,13 +35,37 @@ def _projected_gravity(asset: Articulation, body_ids) -> torch.Tensor:
     return math_utils.quat_apply_inverse(quaternions, gravity)
 
 
-def track_height_command_exp(env, command_name: str, std: float, settle_gate: bool = False) -> torch.Tensor:
+def track_height_command_exp(
+    env,
+    command_name: str,
+    std: float,
+    settle_gate: bool = False,
+    stationary_gate: bool = False,
+) -> torch.Tensor:
     command = env.command_manager.get_term(command_name)
     error = torch.square(command.measured_height - command.target_height)
     reward = torch.exp(-error / std**2)
     if settle_gate:
         reward *= (command.settled & (command.target_height >= 0.0)).float()
+    if stationary_gate:
+        reward *= (command.command_stationary & (command.target_height >= 0.0)).float()
     return reward
+
+
+def track_height_command_l1(
+    env,
+    command_name: str,
+    settle_gate: bool = False,
+    stationary_gate: bool = False,
+) -> torch.Tensor:
+    """Keep a useful height gradient outside the narrow exponential kernel."""
+    command = env.command_manager.get_term(command_name)
+    penalty = torch.abs(command.measured_height - command.target_height)
+    if settle_gate:
+        penalty *= (command.settled & (command.target_height >= 0.0)).float()
+    if stationary_gate:
+        penalty *= (command.command_stationary & (command.target_height >= 0.0)).float()
+    return penalty
 
 
 def joint_pos_tracking_error_l2(
@@ -128,6 +152,22 @@ def joint_deviation_for_height_command(
     )
 
 
+def joint_deviation_from_action_center(
+    env,
+    action_name: str,
+    mode: Literal["l1", "l2"] = "l1",
+) -> torch.Tensor:
+    """Penalize deviation from the command-conditioned posture scaffold."""
+
+    action = env.action_manager.get_term(action_name)
+    deviation = action.deployment_joint_position - action.command_center
+    if mode == "l1":
+        return torch.sum(torch.abs(deviation), dim=1)
+    if mode == "l2":
+        return torch.sum(torch.square(deviation), dim=1)
+    raise ValueError(f"unsupported joint-deviation mode: {mode}")
+
+
 def joint_deviation_if_standing(
     env,
     standing_height_threshold: float,
@@ -147,6 +187,38 @@ def moving(env, asset_cfg: SceneEntityCfg, weight_lin: float = 1.0, weight_ang: 
         asset.data.body_lin_vel_w.norm(dim=-1).mean(dim=1) * weight_lin
         + asset.data.body_ang_vel_w.norm(dim=-1).mean(dim=1) * weight_ang
     )
+
+
+def stationary_base_motion_l2(
+    env,
+    asset_cfg: SceneEntityCfg,
+    command_name: str,
+    linear_weight: float = 1.0,
+    angular_weight: float = 1.0,
+) -> torch.Tensor:
+    """Suppress sway after a command ramp without penalizing vertical height changes."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command = env.command_manager.get_term(command_name)
+    planar_velocity = torch.sum(torch.square(asset.data.root_lin_vel_b[:, :2]), dim=1)
+    angular_velocity = torch.sum(torch.square(asset.data.root_ang_vel_b[:, :2]), dim=1)
+    active = command.command_stationary & command.settled & (command.target_height >= 0.0)
+    return (linear_weight * planar_velocity + angular_weight * angular_velocity) * active.float()
+
+
+def positive_height_base_motion_l2(
+    env,
+    asset_cfg: SceneEntityCfg,
+    command_name: str,
+    linear_weight: float = 1.0,
+    angular_weight: float = 1.0,
+) -> torch.Tensor:
+    """Suppress planar drift and body rotation without resisting vertical tracking."""
+    asset: Articulation = env.scene[asset_cfg.name]
+    command = env.command_manager.get_term(command_name)
+    planar_velocity = torch.sum(torch.square(asset.data.root_lin_vel_b[:, :2]), dim=1)
+    angular_velocity = torch.sum(torch.square(asset.data.root_ang_vel_b[:, :2]), dim=1)
+    active = command.target_height >= 0.0
+    return (linear_weight * planar_velocity + angular_weight * angular_velocity) * active.float()
 
 
 def moving_if_tracking(

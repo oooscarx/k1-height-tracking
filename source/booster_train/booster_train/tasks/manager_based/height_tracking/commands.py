@@ -30,6 +30,10 @@ class SmoothHeightCommand(CommandTerm):
         super().__init__(cfg, env)
         if not 0.0 <= cfg.focus_ratio <= 1.0:
             raise ValueError("focus_ratio must be within [0, 1]")
+        if not 0.0 <= cfg.local_target_ratio <= 1.0:
+            raise ValueError("local_target_ratio must be within [0, 1]")
+        if cfg.local_target_delta_range[0] > cfg.local_target_delta_range[1]:
+            raise ValueError("local_target_delta_range must be ordered")
         focus_minimum, focus_maximum = cfg.focus_height_range
         command_minimum, command_maximum = cfg.ranges.height
         if cfg.focus_ratio > 0.0 and not command_minimum <= focus_minimum < focus_maximum <= command_maximum:
@@ -47,10 +51,15 @@ class SmoothHeightCommand(CommandTerm):
         self._manual_mask = torch.zeros(self.num_envs, device=self.device, dtype=torch.bool)
         self._manual_height = torch.zeros(self.num_envs, device=self.device)
         self.metrics["height_error"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["stationary_height_error"] = torch.zeros(self.num_envs, device=self.device)
+        self.metrics["stationary_height_success"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["high_height_error"] = torch.zeros(self.num_envs, device=self.device)
         self.metrics["high_height_success"] = torch.zeros(self.num_envs, device=self.device)
         self._episode_error_sum = torch.zeros(self.num_envs, device=self.device)
         self._episode_step_count = torch.zeros(self.num_envs, device=self.device)
+        self._episode_stationary_error_sum = torch.zeros(self.num_envs, device=self.device)
+        self._episode_stationary_success_sum = torch.zeros(self.num_envs, device=self.device)
+        self._episode_stationary_step_count = torch.zeros(self.num_envs, device=self.device)
         self._episode_high_error_sum = torch.zeros(self.num_envs, device=self.device)
         self._episode_high_success_sum = torch.zeros(self.num_envs, device=self.device)
         self._episode_high_step_count = torch.zeros(self.num_envs, device=self.device)
@@ -87,6 +96,11 @@ class SmoothHeightCommand(CommandTerm):
     @property
     def settled(self) -> torch.Tensor:
         return self._steps_since_resample > self._settle_steps
+
+    @property
+    def command_stationary(self) -> torch.Tensor:
+        """Whether the rate-limited command has reached its sampled target."""
+        return torch.abs(self._target_height - self._current_height_cmd) < 1.0e-4
 
     @property
     def relaxation_intensity(self) -> torch.Tensor:
@@ -159,6 +173,14 @@ class SmoothHeightCommand(CommandTerm):
         if self.governor is not None:
             self._finish_goals(env_ids)
         self._steps_since_resample[env_ids] = 0
+        measured = self.measured_height[env_ids]
+        if self.cfg.initialize_from_measured_height:
+            measured = torch.clamp(measured, *self.cfg.ranges.height)
+            self._current_height_cmd[env_ids] = torch.where(
+                torch.isfinite(measured),
+                measured,
+                self._current_height_cmd[env_ids],
+            )
         count = len(env_ids)
         roll = torch.rand(count, device=self.device)
         standing = roll < self.cfg.standing_ratio
@@ -177,6 +199,23 @@ class SmoothHeightCommand(CommandTerm):
                 focused_ids = uniform_ids[focused]
                 heights[focused_ids] = torch.empty(focused_ids.numel(), device=self.device).uniform_(
                     *self.cfg.focus_height_range
+                )
+        if self.cfg.local_target_ratio > 0.0:
+            local = torch.rand(count, device=self.device) < self.cfg.local_target_ratio
+            local_ids = torch.where(local)[0]
+            if local_ids.numel() > 0:
+                local_base = torch.where(
+                    torch.isfinite(measured[local_ids]),
+                    measured[local_ids],
+                    self._current_height_cmd[env_ids][local_ids],
+                )
+                local_delta = torch.empty(
+                    local_ids.numel(),
+                    device=self.device,
+                ).uniform_(*self.cfg.local_target_delta_range)
+                heights[local_ids] = torch.clamp(
+                    local_base + local_delta,
+                    *self.cfg.ranges.height,
                 )
         self._target_height[env_ids] = heights
         self._velocity[env_ids] = torch.empty(count, device=self.device).uniform_(*self.cfg.velocity_range)
@@ -223,6 +262,13 @@ class SmoothHeightCommand(CommandTerm):
         self._episode_error_sum += torch.where(valid, error, 0.0)
         self._episode_step_count += valid.float()
         self.metrics["height_error"] = self._episode_error_sum / self._episode_step_count.clamp(min=1.0)
+        stationary = valid & self.command_stationary
+        self._episode_stationary_error_sum += torch.where(stationary, error, 0.0)
+        self._episode_stationary_success_sum += (error < self.cfg.success_error_threshold) * stationary
+        self._episode_stationary_step_count += stationary.float()
+        stationary_count = self._episode_stationary_step_count.clamp(min=1.0)
+        self.metrics["stationary_height_error"] = self._episode_stationary_error_sum / stationary_count
+        self.metrics["stationary_height_success"] = self._episode_stationary_success_sum / stationary_count
         high = valid & (self._current_height_cmd >= self.cfg.high_height_threshold)
         self._episode_high_error_sum += torch.where(high, error, 0.0)
         self._episode_high_success_sum += (error < self.cfg.success_error_threshold) * high
@@ -250,6 +296,9 @@ class SmoothHeightCommand(CommandTerm):
                                terminated=self._env.termination_manager.terminated[env_ids])
         self._episode_error_sum[env_ids] = 0.0
         self._episode_step_count[env_ids] = 0.0
+        self._episode_stationary_error_sum[env_ids] = 0.0
+        self._episode_stationary_success_sum[env_ids] = 0.0
+        self._episode_stationary_step_count[env_ids] = 0.0
         self._episode_high_error_sum[env_ids] = 0.0
         self._episode_high_success_sum[env_ids] = 0.0
         self._episode_high_step_count[env_ids] = 0.0
@@ -331,9 +380,12 @@ class SmoothHeightCommandCfg(CommandTermCfg):
     flat_ratio: float = 0.0
     focus_ratio: float = 0.0
     focus_height_range: tuple[float, float] = (0.0, 0.72)
+    local_target_ratio: float = 0.0
+    local_target_delta_range: tuple[float, float] = (-0.02, 0.02)
     high_height_threshold: float = 0.6
     success_error_threshold: float = 0.08
     governed_commands: bool = False
+    initialize_from_measured_height: bool = False
     governor_step_m: float = 0.12
     governor_hold_s: float = 4.0
 

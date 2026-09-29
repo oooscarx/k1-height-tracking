@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 from itertools import chain
 
 import torch
@@ -37,6 +38,8 @@ class PPO:
         entropy_coef=0.0,
         learning_rate=1e-3,
         max_learning_rate=1e-2,
+        policy_kl_coefficient=0.0,
+        policy_kl_max=None,
         max_grad_norm=1.0,
         use_clipped_value_loss=True,
         schedule="fixed",
@@ -53,6 +56,10 @@ class PPO:
         l2c2_cfg: dict | None = None,
         # WBC-AGILE reward normalization parameters
         reward_normalization_cfg: dict | None = None,
+        # Optional direct regularization for actor means before environment clipping.
+        actor_mean_bound_cfg: dict | None = None,
+        # Optional finite-difference supervision for command-conditioned actions.
+        actor_height_response_cfg: dict | None = None,
     ):
         # device-related parameters
         self.device = device
@@ -148,6 +155,62 @@ class PPO:
         else:
             self.reward_normalizer = None
 
+        if actor_mean_bound_cfg is not None:
+            self.actor_mean_bound_indices = tuple(
+                int(index) for index in actor_mean_bound_cfg.get("action_indices", ())
+            )
+            self.actor_mean_soft_limit = float(actor_mean_bound_cfg.get("soft_limit", 3.5))
+            self.actor_mean_bound_coefficient = float(
+                actor_mean_bound_cfg.get("loss_coefficient", 0.1)
+            )
+            if not self.actor_mean_bound_indices:
+                raise ValueError("actor mean bound action indices must not be empty")
+            if self.actor_mean_soft_limit <= 0.0 or self.actor_mean_bound_coefficient < 0.0:
+                raise ValueError("actor mean bound parameters are invalid")
+        else:
+            self.actor_mean_bound_indices = ()
+            self.actor_mean_soft_limit = 0.0
+            self.actor_mean_bound_coefficient = 0.0
+
+        if actor_height_response_cfg is not None:
+            self.actor_height_response_indices = tuple(
+                int(index) for index in actor_height_response_cfg.get("action_indices", ())
+            )
+            target_delta = actor_height_response_cfg.get("target_action_delta", ())
+            self.actor_height_response_target = torch.as_tensor(
+                target_delta,
+                dtype=torch.float32,
+                device=self.device,
+            )
+            self.actor_height_response_low = float(
+                actor_height_response_cfg.get("low_height", 0.68)
+            )
+            self.actor_height_response_high = float(
+                actor_height_response_cfg.get("high_height", 0.72)
+            )
+            self.actor_height_command_width = int(
+                actor_height_response_cfg.get("command_history_width", 5)
+            )
+            self.actor_height_response_coefficient = float(
+                actor_height_response_cfg.get("loss_coefficient", 0.1)
+            )
+            if (
+                not self.actor_height_response_indices
+                or len(self.actor_height_response_indices)
+                != self.actor_height_response_target.numel()
+                or self.actor_height_response_low >= self.actor_height_response_high
+                or self.actor_height_command_width < 1
+                or self.actor_height_response_coefficient < 0.0
+            ):
+                raise ValueError("actor height response parameters are invalid")
+        else:
+            self.actor_height_response_indices = ()
+            self.actor_height_response_target = torch.empty(0, device=self.device)
+            self.actor_height_response_low = 0.0
+            self.actor_height_response_high = 0.0
+            self.actor_height_command_width = 0
+            self.actor_height_response_coefficient = 0.0
+
         # PPO components
         self.policy = policy
         self.policy.to(self.device)
@@ -174,8 +237,16 @@ class PPO:
         self.schedule = schedule
         self.learning_rate = learning_rate
         self.max_learning_rate = float(max_learning_rate)
+        self.policy_kl_coefficient = float(policy_kl_coefficient)
+        self.policy_kl_max = None if policy_kl_max is None else float(policy_kl_max)
         if self.max_learning_rate <= 0.0:
             raise ValueError("max_learning_rate must be positive")
+        if self.policy_kl_coefficient < 0.0:
+            raise ValueError("policy_kl_coefficient must be non-negative")
+        if self.policy_kl_max is not None and (
+            not math.isfinite(self.policy_kl_max) or self.policy_kl_max <= 0.0
+        ):
+            raise ValueError("policy_kl_max must be finite and positive")
         if self.learning_rate > self.max_learning_rate:
             raise ValueError(
                 "learning_rate must not exceed max_learning_rate: "
@@ -281,6 +352,9 @@ class PPO:
     def update(self):  # noqa: C901
         mean_value_loss = 0
         mean_surrogate_loss = 0
+        mean_policy_kl_loss = 0.0
+        mean_policy_kl_post = 0.0
+        mean_policy_kl_projection_scale = 0.0
         mean_entropy = 0
         # -- RND loss
         if self.rnd:
@@ -298,6 +372,26 @@ class PPO:
         else:
             mean_l2c2_actor_loss = None
             mean_l2c2_critic_loss = None
+        mean_actor_mean_bound_loss = 0.0 if self.actor_mean_bound_indices else None
+        mean_actor_height_response_loss = (
+            0.0 if self.actor_height_response_indices else None
+        )
+        actor_parameters = [
+            parameter
+            for parameter in self.policy.actor.parameters()
+            if parameter.requires_grad
+        ]
+        noise_parameter = (
+            self.policy.log_std
+            if self.policy.noise_std_type == "log"
+            else self.policy.std
+        )
+        if noise_parameter.requires_grad:
+            actor_parameters.append(noise_parameter)
+        actor_parameters = tuple(actor_parameters)
+        actor_update_start = tuple(
+            parameter.detach().clone() for parameter in actor_parameters
+        )
 
         # generator for mini batches
         if self.policy.is_recurrent:
@@ -366,6 +460,21 @@ class PPO:
             sigma_batch = self.policy.action_std[:original_batch_size]
             entropy_batch = self.policy.entropy[:original_batch_size]
 
+            safe_sigma_batch = sigma_batch.clamp_min(1.0e-8)
+            safe_old_sigma_batch = old_sigma_batch.clamp_min(1.0e-8)
+            policy_kl_loss = torch.mean(
+                torch.sum(
+                    torch.log(safe_sigma_batch / safe_old_sigma_batch)
+                    + (
+                        torch.square(safe_old_sigma_batch)
+                        + torch.square(old_mu_batch - mu_batch)
+                    )
+                    / (2.0 * torch.square(safe_sigma_batch))
+                    - 0.5,
+                    dim=-1,
+                )
+            )
+
             # KL
             if self.desired_kl is not None and self.schedule == "adaptive":
                 with torch.inference_mode():
@@ -389,7 +498,11 @@ class PPO:
                     #       then the learning rate should be the same across all GPUs.
                     if self.gpu_global_rank == 0:
                         if kl_mean > self.desired_kl * 2.0:
-                            self.learning_rate = max(1e-5, self.learning_rate / 1.5)
+                            minimum_learning_rate = min(1e-5, self.max_learning_rate)
+                            self.learning_rate = max(
+                                minimum_learning_rate,
+                                self.learning_rate / 1.5,
+                            )
                         elif kl_mean < self.desired_kl / 2.0 and kl_mean > 0.0:
                             self.learning_rate = min(
                                 self.max_learning_rate,
@@ -426,6 +539,41 @@ class PPO:
                 value_loss = self._value_error_loss(value_batch, returns_batch).mean()
 
             loss = surrogate_loss + self.value_loss_coef * value_loss - self.entropy_coef * entropy_batch.mean()
+            loss += self.policy_kl_coefficient * policy_kl_loss
+
+            if self.actor_mean_bound_indices:
+                selected_mean = mu_batch[:, self.actor_mean_bound_indices]
+                actor_mean_bound_loss = torch.mean(
+                    torch.square(
+                        torch.clamp(
+                            torch.abs(selected_mean) - self.actor_mean_soft_limit,
+                            min=0.0,
+                        )
+                    )
+                )
+                loss += self.actor_mean_bound_coefficient * actor_mean_bound_loss
+
+            if self.actor_height_response_indices:
+                response_obs = obs_batch[:original_batch_size]
+                if self.actor_height_command_width > response_obs.shape[-1]:
+                    raise ValueError("height command history exceeds actor observation width")
+                low_obs = response_obs.clone()
+                high_obs = response_obs.clone()
+                low_obs[:, -self.actor_height_command_width :] = self.actor_height_response_low
+                high_obs[:, -self.actor_height_command_width :] = self.actor_height_response_high
+                low_mean = self.policy.act_inference(low_obs)
+                high_mean = self.policy.act_inference(high_obs)
+                predicted_delta = (
+                    high_mean[:, self.actor_height_response_indices]
+                    - low_mean[:, self.actor_height_response_indices]
+                )
+                actor_height_response_loss = nn.functional.mse_loss(
+                    predicted_delta,
+                    self.actor_height_response_target.unsqueeze(0).expand_as(predicted_delta),
+                )
+                loss += (
+                    self.actor_height_response_coefficient * actor_height_response_loss
+                )
 
             # Symmetry loss
             if self.symmetry:
@@ -542,6 +690,53 @@ class PPO:
             # -- For PPO
             nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
             self.optimizer.step()
+
+            policy_kl_post = policy_kl_loss.detach()
+            projection_scale = 1.0
+            if self.policy_kl_max is not None and actor_parameters:
+                actor_update_candidate = tuple(
+                    parameter.detach().clone() for parameter in actor_parameters
+                )
+                for _ in range(4):
+                    with torch.inference_mode():
+                        self.policy.act(
+                            obs_batch,
+                            masks=masks_batch,
+                            hidden_states=hid_states_batch[0],
+                        )
+                        projected_mu = self.policy.action_mean[:original_batch_size]
+                        projected_sigma = self.policy.action_std[:original_batch_size]
+                        safe_projected_sigma = projected_sigma.clamp_min(1.0e-8)
+                        policy_kl_post = torch.mean(
+                            torch.sum(
+                                torch.log(
+                                    safe_projected_sigma / safe_old_sigma_batch
+                                )
+                                + (
+                                    torch.square(safe_old_sigma_batch)
+                                    + torch.square(old_mu_batch - projected_mu)
+                                )
+                                / (2.0 * torch.square(safe_projected_sigma))
+                                - 0.5,
+                                dim=-1,
+                            )
+                        )
+                    if policy_kl_post <= self.policy_kl_max * 1.01:
+                        break
+                    projection_scale *= min(
+                        0.99,
+                        math.sqrt(self.policy_kl_max / float(policy_kl_post)),
+                    )
+                    with torch.no_grad():
+                        for parameter, start, candidate in zip(
+                            actor_parameters,
+                            actor_update_start,
+                            actor_update_candidate,
+                            strict=True,
+                        ):
+                            parameter.copy_(
+                                start + projection_scale * (candidate - start)
+                            )
             # -- For RND
             if self.rnd_optimizer:
                 self.rnd_optimizer.step()
@@ -549,6 +744,9 @@ class PPO:
             # Store the losses
             mean_value_loss += value_loss.item()
             mean_surrogate_loss += surrogate_loss.item()
+            mean_policy_kl_loss += policy_kl_loss.item()
+            mean_policy_kl_post += policy_kl_post.item()
+            mean_policy_kl_projection_scale += projection_scale
             mean_entropy += entropy_batch.mean().item()
             # -- RND loss
             if mean_rnd_loss is not None:
@@ -559,11 +757,18 @@ class PPO:
             if mean_l2c2_actor_loss is not None:
                 mean_l2c2_actor_loss += l2c2_actor_loss.item()
                 mean_l2c2_critic_loss += l2c2_critic_loss.item()
+            if mean_actor_mean_bound_loss is not None:
+                mean_actor_mean_bound_loss += actor_mean_bound_loss.item()
+            if mean_actor_height_response_loss is not None:
+                mean_actor_height_response_loss += actor_height_response_loss.item()
 
         # -- For PPO
         num_updates = self.num_learning_epochs * self.num_mini_batches
         mean_value_loss /= num_updates
         mean_surrogate_loss /= num_updates
+        mean_policy_kl_loss /= num_updates
+        mean_policy_kl_post /= num_updates
+        mean_policy_kl_projection_scale /= num_updates
         mean_entropy /= num_updates
         # -- For RND
         if mean_rnd_loss is not None:
@@ -574,6 +779,10 @@ class PPO:
         if mean_l2c2_actor_loss is not None:
             mean_l2c2_actor_loss /= num_updates
             mean_l2c2_critic_loss /= num_updates
+        if mean_actor_mean_bound_loss is not None:
+            mean_actor_mean_bound_loss /= num_updates
+        if mean_actor_height_response_loss is not None:
+            mean_actor_height_response_loss /= num_updates
         # -- Clear the storage
         self.storage.clear()
 
@@ -581,6 +790,9 @@ class PPO:
         loss_dict = {
             "value_function": mean_value_loss,
             "surrogate": mean_surrogate_loss,
+            "policy_kl": mean_policy_kl_loss,
+            "policy_kl_post": mean_policy_kl_post,
+            "policy_kl_projection_scale": mean_policy_kl_projection_scale,
             "entropy": mean_entropy,
         }
         if self.rnd:
@@ -590,6 +802,10 @@ class PPO:
         if self.use_l2c2:
             loss_dict["l2c2_actor"] = mean_l2c2_actor_loss
             loss_dict["l2c2_critic"] = mean_l2c2_critic_loss
+        if mean_actor_mean_bound_loss is not None:
+            loss_dict["actor_mean_bound"] = mean_actor_mean_bound_loss
+        if mean_actor_height_response_loss is not None:
+            loss_dict["actor_height_response"] = mean_actor_height_response_loss
 
         return loss_dict
 

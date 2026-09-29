@@ -10,6 +10,7 @@ import "./style.css";
 
 type PolicyManifest = {
   checkpoint_iteration: number;
+  onnx_sha256: string;
   input_name: string;
   output_name: string;
   input_size: number;
@@ -23,13 +24,26 @@ type PolicyManifest = {
   position_braking_horizon_s: number;
   actuator_delay_steps: number[];
   position_target_velocity_limit: number[];
+  position_target_velocity_limit_initialize_from_target?: boolean;
+  position_target_velocity_limit_warmup_steps?: number;
   height_residual_fade_joint_indices: number[];
+  height_residual_amplify_joint_indices?: number[];
   height_residual_fade_range: [number, number];
   height_residual_minimum_scale: number;
-  height_posture_center: number[];
+  height_residual_base_maximum_scale?: number;
+  height_residual_maximum_scale?: number;
+  height_residual_handoff_range?: [number, number] | null;
+  height_residual_handoff_minimum_scale?: number;
+  height_residual_deep_handoff_range?: [number, number] | null;
+  height_residual_deep_handoff_minimum_scale?: number;
+  height_residual_deep_handoff_joint_indices?: number[];
+  height_posture_center: number[] | null;
+  height_posture_high_center: number[] | null;
   height_posture_range: [number, number];
   height_posture_exponent: number;
   height_posture_blend: number;
+  height_posture_phase_knots?: Array<[number, number]> | null;
+  last_action_scales?: number[];
   action_center: number[];
   action_scale: number[];
   position_minimum: number[];
@@ -153,6 +167,8 @@ class K1HeightDemo {
   private action = new Float32Array(22);
   private jointTargets = new Float32Array(22);
   private targetDelayHistory: Float32Array[] = [];
+  private targetRateLimitInitialized = false;
+  private targetRateLimitSteps = 0;
   private targetHeight = 0.72;
   private commandHeight = 0.72;
   private paused = false;
@@ -190,19 +206,27 @@ class K1HeightDemo {
       .catch((error) => {
         throw new Error(`K1 模型载入失败: ${error instanceof Error ? error.message : String(error)}`, {cause: error});
       });
-    const manifestPromise = this.fetchJson<PolicyManifest>(`${BASE_URL}policy/k1_height_policy.json`).catch((error) => {
+    const manifestPromise = this.fetchJson<PolicyManifest>(
+      `${BASE_URL}policy/k1_height_policy.json`,
+      true,
+    ).catch((error) => {
       throw new Error(`策略配置载入失败: ${error instanceof Error ? error.message : String(error)}`, {cause: error});
     });
     ort.env.wasm.numThreads = 1;
     ort.env.wasm.proxy = false;
-    const sessionPromise = this.runtimeWasmSource("ort-wasm-simd-threaded.wasm")
-      .then((source) => {
+    const sessionPromise = Promise.all([
+      this.runtimeWasmSource("ort-wasm-simd-threaded.wasm"),
+      manifestPromise,
+    ])
+      .then(([source, manifest]) => {
         if (typeof source === "string") {
           ort.env.wasm.wasmPaths = {wasm: source};
         } else {
           ort.env.wasm.wasmBinary = source;
         }
-        return ort.InferenceSession.create(`${BASE_URL}policy/k1_height_policy.onnx`, {
+        const policyUrl = new URL(`${BASE_URL}policy/k1_height_policy.onnx`, window.location.href);
+        policyUrl.searchParams.set("v", manifest.onnx_sha256.slice(0, 16));
+        return ort.InferenceSession.create(policyUrl.href, {
           executionProviders: ["wasm"],
           graphOptimizationLevel: "all",
         }).then((session) => {
@@ -254,13 +278,16 @@ class K1HeightDemo {
     ui.loadingProgress.style.width = `${this.loadingProgress}%`;
   }
 
-  private async fetchBytes(url: string, attempts = 3): Promise<Uint8Array> {
+  private async fetchBytes(url: string, attempts = 3, fresh = false): Promise<Uint8Array> {
     let lastError: unknown;
     for (let attempt = 1; attempt <= attempts; attempt++) {
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 60_000);
       try {
-        const response = await fetch(url, {signal: controller.signal});
+        const response = await fetch(url, {
+          signal: controller.signal,
+          cache: fresh ? "no-store" : "default",
+        });
         if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
         return new Uint8Array(await response.arrayBuffer());
       } catch (error) {
@@ -273,8 +300,8 @@ class K1HeightDemo {
     throw new Error(`无法下载 ${url}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
   }
 
-  private async fetchJson<T>(url: string): Promise<T> {
-    const bytes = await this.fetchBytes(url);
+  private async fetchJson<T>(url: string, fresh = false): Promise<T> {
+    const bytes = await this.fetchBytes(url, 3, fresh);
     return JSON.parse(new TextDecoder().decode(bytes)) as T;
   }
 
@@ -456,6 +483,8 @@ class K1HeightDemo {
       this.jointTargets[index] = this.manifest.action_center[index];
     }
     this.targetDelayHistory = [this.jointTargets.slice()];
+    this.targetRateLimitInitialized = false;
+    this.targetRateLimitSteps = 0;
     this.action.fill(0);
     this.pushStepsRemaining = 0;
     this.pushMagnitude = 0;
@@ -497,7 +526,10 @@ class K1HeightDemo {
       projected_gravity: projectedGravity,
       joint_pos_rel: jointPosition,
       joint_vel_rel: jointVelocity,
-      last_action: Array.from(this.action),
+      last_action: Array.from(
+        this.action,
+        (value, index) => value * (this.manifest.last_action_scales?.[index] ?? 1),
+      ),
       height_command: [this.commandHeight],
     };
   }
@@ -598,30 +630,111 @@ class K1HeightDemo {
 
   private policyCenter(index: number): number {
     const [minimumHeight, maximumHeight] = this.manifest.height_posture_range;
-    const phase = Math.pow(
-      THREE.MathUtils.clamp(
-        (maximumHeight - this.commandHeight) / (maximumHeight - minimumHeight),
-        0,
-        1,
-      ),
-      this.manifest.height_posture_exponent,
-    );
-    return (
-      this.manifest.action_center[index] +
-      this.manifest.height_posture_blend *
-        phase *
-        (this.manifest.height_posture_center[index] - this.manifest.action_center[index])
-    );
+    const base = this.manifest.action_center[index];
+    const low = this.manifest.height_posture_center?.[index];
+    const high = this.manifest.height_posture_high_center?.[index];
+    if (low !== undefined && high !== undefined) {
+      const phase = this.posturePhase(minimumHeight, maximumHeight);
+      const lowCenter = base + this.manifest.height_posture_blend * (low - base);
+      return lowCenter + phase * (high - lowCenter);
+    }
+    if (high !== undefined) {
+      const phase = Math.pow(
+        THREE.MathUtils.clamp(
+          (this.commandHeight - minimumHeight) / (maximumHeight - minimumHeight),
+          0,
+          1,
+        ),
+        this.manifest.height_posture_exponent,
+      );
+      return base + this.manifest.height_posture_blend * phase * (high - base);
+    }
+    if (low !== undefined) {
+      const phase = Math.pow(
+        THREE.MathUtils.clamp(
+          (maximumHeight - this.commandHeight) / (maximumHeight - minimumHeight),
+          0,
+          1,
+        ),
+        this.manifest.height_posture_exponent,
+      );
+      return base + this.manifest.height_posture_blend * phase * (low - base);
+    }
+    return base;
+  }
+
+  private posturePhase(minimumHeight: number, maximumHeight: number): number {
+    const knots = this.manifest.height_posture_phase_knots;
+    if (!knots || knots.length < 2) {
+      return Math.pow(
+        THREE.MathUtils.clamp(
+          (this.commandHeight - minimumHeight) / (maximumHeight - minimumHeight),
+          0,
+          1,
+        ),
+        this.manifest.height_posture_exponent,
+      );
+    }
+    if (this.commandHeight <= knots[0][0]) return knots[0][1];
+    for (let index = 1; index < knots.length; index++) {
+      const [endHeight, endPhase] = knots[index];
+      const [startHeight, startPhase] = knots[index - 1];
+      if (this.commandHeight <= endHeight) {
+        const blend = THREE.MathUtils.clamp(
+          (this.commandHeight - startHeight) / (endHeight - startHeight),
+          0,
+          1,
+        );
+        return startPhase + blend * (endPhase - startPhase);
+      }
+    }
+    return knots[knots.length - 1][1];
   }
 
   private updateJointTargets(): void {
     const [fadeStart, fadeEnd] = this.manifest.height_residual_fade_range;
     const phase = THREE.MathUtils.clamp((fadeEnd - this.commandHeight) / (fadeEnd - fadeStart), 0, 1);
     const smoothPhase = phase * phase * (3 - 2 * phase);
-    const heightResidualScale =
+    const amplifiedJointIndices = this.manifest.height_residual_amplify_joint_indices;
+    const baseMaximumScale =
+      this.manifest.height_residual_base_maximum_scale ??
+      (amplifiedJointIndices ? 1 : (this.manifest.height_residual_maximum_scale ?? 1));
+    const baseHeightResidualScale =
       this.manifest.height_residual_minimum_scale +
-      (1 - this.manifest.height_residual_minimum_scale) * smoothPhase;
+      (baseMaximumScale - this.manifest.height_residual_minimum_scale) *
+        smoothPhase;
+    let amplifiedHeightResidualScale =
+      this.manifest.height_residual_minimum_scale +
+      ((this.manifest.height_residual_maximum_scale ?? 1) - this.manifest.height_residual_minimum_scale) *
+        smoothPhase;
+    const handoffRange = this.manifest.height_residual_handoff_range;
+    if (handoffRange) {
+      const [handoffStart, handoffEnd] = handoffRange;
+      const handoffPhase = THREE.MathUtils.clamp(
+        (handoffEnd - this.commandHeight) / (handoffEnd - handoffStart),
+        0,
+        1,
+      );
+      const handoffSmoothPhase = handoffPhase * handoffPhase * (3 - 2 * handoffPhase);
+      amplifiedHeightResidualScale *=
+        1 + ((this.manifest.height_residual_handoff_minimum_scale ?? 1) - 1) * handoffSmoothPhase;
+    }
     const fadedJoints = new Set(this.manifest.height_residual_fade_joint_indices);
+    const amplifiedJoints = new Set(amplifiedJointIndices ?? []);
+    const deepJoints = new Set(this.manifest.height_residual_deep_handoff_joint_indices ?? []);
+    let deepHeightResidualScale = 1;
+    const deepHandoffRange = this.manifest.height_residual_deep_handoff_range;
+    if (deepHandoffRange) {
+      const [deepStart, deepEnd] = deepHandoffRange;
+      const deepPhase = THREE.MathUtils.clamp(
+        (deepEnd - this.commandHeight) / (deepEnd - deepStart),
+        0,
+        1,
+      );
+      const deepSmoothPhase = deepPhase * deepPhase * (3 - 2 * deepPhase);
+      deepHeightResidualScale =
+        1 + ((this.manifest.height_residual_deep_handoff_minimum_scale ?? 1) - 1) * deepSmoothPhase;
+    }
     const assisted = ui.stabilizer.checked;
     const policyBlend = assisted ? 0.05 : 1;
 
@@ -631,7 +744,12 @@ class K1HeightDemo {
         this.manifest.position_delta_clip[0],
         this.manifest.position_delta_clip[1],
       );
-      const residualScale = fadedJoints.has(index) ? heightResidualScale : 1;
+      let residualScale = amplifiedJoints.has(index)
+        ? amplifiedHeightResidualScale
+        : fadedJoints.has(index)
+          ? baseHeightResidualScale
+          : 1;
+      if (deepJoints.has(index)) residualScale *= deepHeightResidualScale;
       const center = assisted ? this.assistedCenter(index) : this.policyCenter(index);
       let requested = THREE.MathUtils.clamp(
         center + policyBlend * residualScale * jointDelta,
@@ -651,16 +769,26 @@ class K1HeightDemo {
           safeMaximum,
         );
       }
-      const rateLimited =
-        this.jointTargets[index] +
+      const initialTarget = this.manifest.position_target_velocity_limit_initialize_from_target
+        ? requested
+        : current;
+      const previousTarget = this.targetRateLimitInitialized
+        ? this.jointTargets[index]
+        : initialTarget;
+      const limitedTarget =
+        previousTarget +
         THREE.MathUtils.clamp(
-          requested - this.jointTargets[index],
+          requested - previousTarget,
           -this.manifest.position_target_velocity_limit[index] / this.manifest.policy_rate_hz,
           this.manifest.position_target_velocity_limit[index] / this.manifest.policy_rate_hz,
         );
+      const warmupSteps = this.manifest.position_target_velocity_limit_warmup_steps ?? 0;
+      const rateLimited = this.targetRateLimitSteps < warmupSteps ? requested : limitedTarget;
       const errorLimit = this.manifest.torque_limit[index] / this.manifest.stiffness[index];
       this.jointTargets[index] = current + THREE.MathUtils.clamp(rateLimited - current, -errorLimit, errorLimit);
     }
+    this.targetRateLimitInitialized = true;
+    this.targetRateLimitSteps++;
   }
 
   private applyController(): void {

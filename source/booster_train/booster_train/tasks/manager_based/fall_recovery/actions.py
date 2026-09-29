@@ -56,9 +56,14 @@ class K1ParallelJointPositionAction(JointPositionAction):
         else:
             self._scale = tensor(cfg.position_scale)
         limit_tolerance = 1.0e-6
-        if cfg.reference_command_name is None and not cfg.relative_to_current and (
+        if (
+            not cfg.allow_position_scale_beyond_static_center
+            and cfg.reference_command_name is None
+            and not cfg.relative_to_current
+            and (
             torch.any(self._center - self._scale < self._minimum - limit_tolerance)
             or torch.any(self._center + self._scale > self._maximum + limit_tolerance)
+            )
         ):
             raise ValueError("K1 action center/scale exceeds a logical joint limit")
         if torch.any(self._scale <= 0.0):
@@ -126,6 +131,182 @@ class K1ParallelJointPositionAction(JointPositionAction):
             device=self.device,
         )
         self._pending_nonfinite_policy_input = torch.zeros_like(self._nonfinite_action)
+        if cfg.position_target_velocity_limit is None:
+            self._position_target_velocity_limit = None
+        else:
+            if cfg.position_target_velocity_limit_warmup_steps < 0:
+                raise ValueError("position-target velocity-limit warmup must be non-negative")
+            velocity_limit = torch.as_tensor(
+                cfg.position_target_velocity_limit,
+                dtype=torch.float32,
+                device=self.device,
+            )
+            if velocity_limit.ndim == 0:
+                velocity_limit = velocity_limit.repeat(len(self._joint_names))
+            if velocity_limit.shape != (len(self._joint_names),) or torch.any(velocity_limit <= 0.0):
+                raise ValueError("K1 position-target velocity limit must be positive and match the action size")
+            self._position_target_velocity_limit = velocity_limit.unsqueeze(0)
+        self._last_rate_limited_target = torch.zeros(
+            (self.num_envs, len(self._joint_names)),
+            dtype=torch.float32,
+            device=self.device,
+        )
+        self._rate_limit_initialized = torch.zeros(
+            self.num_envs,
+            dtype=torch.bool,
+            device=self.device,
+        )
+        self._rate_limit_step_count = torch.zeros(
+            self.num_envs,
+            dtype=torch.long,
+            device=self.device,
+        )
+        self._height_command = None
+        self._height_residual_indexes: torch.Tensor | None = None
+        self._height_residual_amplify_indexes: torch.Tensor | None = None
+        self._height_residual_deep_handoff_indexes: torch.Tensor | None = None
+        self._height_posture_center: torch.Tensor | None = None
+        self._height_posture_high_center: torch.Tensor | None = None
+        self._command_center = self._center.expand(self.num_envs, -1).clone()
+        if cfg.height_command_name is not None:
+            if cfg.height_residual_fade_range is None or not cfg.height_residual_fade_joint_names:
+                raise ValueError(
+                    "height-conditioned actions require a fade range and at least one joint"
+                )
+            fade_start, fade_end = cfg.height_residual_fade_range
+            handoff_range = cfg.height_residual_handoff_range
+            deep_handoff_range = cfg.height_residual_deep_handoff_range
+            if (
+                fade_start >= fade_end
+                or cfg.height_residual_minimum_scale < 0.0
+                or cfg.height_residual_base_maximum_scale < cfg.height_residual_minimum_scale
+                or cfg.height_residual_maximum_scale < cfg.height_residual_minimum_scale
+                or cfg.height_residual_maximum_scale > 2.0
+                or not 0.0 <= cfg.height_residual_handoff_minimum_scale <= 2.0
+                or (
+                    handoff_range is not None
+                    and handoff_range[0] >= handoff_range[1]
+                )
+                or not 0.0 <= cfg.height_residual_deep_handoff_minimum_scale <= 2.0
+                or (
+                    deep_handoff_range is not None
+                    and deep_handoff_range[0] >= deep_handoff_range[1]
+                )
+                or not 0.0 <= cfg.height_posture_measured_blend <= 1.0
+                or not 0.0 <= cfg.height_residual_measured_blend <= 1.0
+            ):
+                raise ValueError("height-conditioned action fade parameters are invalid")
+            unknown = set(cfg.height_residual_fade_joint_names) - set(self._joint_names)
+            if unknown:
+                raise ValueError(f"height-conditioned action joints are unknown: {sorted(unknown)}")
+            amplify_joint_names = cfg.height_residual_amplify_joint_names or []
+            unknown_amplify = set(amplify_joint_names) - set(cfg.height_residual_fade_joint_names)
+            if unknown_amplify:
+                raise ValueError(
+                    "height-conditioned amplified joints must be faded joints: "
+                    f"{sorted(unknown_amplify)}"
+                )
+            deep_handoff_joint_names = (
+                cfg.height_residual_deep_handoff_joint_names
+                or cfg.height_residual_fade_joint_names
+            )
+            unknown_deep_handoff = set(deep_handoff_joint_names) - set(
+                cfg.height_residual_fade_joint_names
+            )
+            if unknown_deep_handoff:
+                raise ValueError(
+                    "height-conditioned deep-handoff joints must be faded joints: "
+                    f"{sorted(unknown_deep_handoff)}"
+                )
+            self._height_command = env.command_manager.get_term(cfg.height_command_name)
+            self._height_residual_indexes = torch.tensor(
+                [self._joint_names.index(name) for name in cfg.height_residual_fade_joint_names],
+                dtype=torch.long,
+                device=self.device,
+            )
+            self._height_residual_amplify_indexes = torch.tensor(
+                [self._joint_names.index(name) for name in amplify_joint_names],
+                dtype=torch.long,
+                device=self.device,
+            )
+            self._height_residual_deep_handoff_indexes = torch.tensor(
+                [self._joint_names.index(name) for name in deep_handoff_joint_names],
+                dtype=torch.long,
+                device=self.device,
+            )
+            if (
+                cfg.height_posture_center is not None
+                or cfg.height_posture_high_center is not None
+            ):
+                posture_minimum, posture_maximum = cfg.height_posture_range
+                posture_knots = cfg.height_posture_phase_knots
+                if (
+                    posture_minimum >= posture_maximum
+                    or cfg.height_posture_exponent <= 0.0
+                    or cfg.height_posture_low_exponent <= 0.0
+                    or not 0.0 <= cfg.height_posture_blend <= 1.0
+                    or (
+                        cfg.height_posture_low_handoff_height is not None
+                        and not (
+                            posture_minimum
+                            < cfg.height_posture_low_handoff_height
+                            < posture_maximum
+                        )
+                    )
+                ):
+                    raise ValueError("height posture interpolation parameters are invalid")
+                if posture_knots is not None:
+                    knot_heights = [float(height) for height, _ in posture_knots]
+                    knot_phases = [float(phase) for _, phase in posture_knots]
+                    if (
+                        len(posture_knots) < 2
+                        or any(
+                            left >= right
+                            for left, right in zip(knot_heights, knot_heights[1:])
+                        )
+                        or any(
+                            left > right
+                            for left, right in zip(knot_phases, knot_phases[1:])
+                        )
+                        or knot_heights[0] != posture_minimum
+                        or knot_heights[-1] != posture_maximum
+                        or knot_phases[0] < 0.0
+                        or knot_phases[-1] > 1.0
+                    ):
+                        raise ValueError(
+                            "height posture phase knots must cover the posture range "
+                            "with monotonic heights and phases in [0, 1]"
+                        )
+            if cfg.height_posture_center is not None:
+                posture_center = torch.as_tensor(
+                    cfg.height_posture_center,
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+                if posture_center.shape != (len(self._joint_names),):
+                    raise ValueError("height posture center must match the action size")
+                if not torch.all(torch.isfinite(posture_center)):
+                    raise ValueError("height posture center must be finite")
+                if torch.any(posture_center < self._target_minimum[0]) or torch.any(
+                    posture_center > self._target_maximum[0]
+                ):
+                    raise ValueError("height posture center exceeds safe joint limits")
+                self._height_posture_center = posture_center.unsqueeze(0)
+            if cfg.height_posture_high_center is not None:
+                high_center = torch.as_tensor(
+                    cfg.height_posture_high_center,
+                    dtype=torch.float32,
+                    device=self.device,
+                )
+                if high_center.shape != (len(self._joint_names),):
+                    raise ValueError("height high-posture center must match the action size")
+                if not torch.all(torch.isfinite(high_center)):
+                    raise ValueError("height high-posture center must be finite")
+                if torch.any(high_center < self._target_minimum[0]) or torch.any(
+                    high_center > self._target_maximum[0]
+                ):
+                    raise ValueError("height high-posture center exceeds safe joint limits")
+                self._height_posture_high_center = high_center.unsqueeze(0)
 
     @property
     def target_reduction(self) -> torch.Tensor:
@@ -167,6 +348,12 @@ class K1ParallelJointPositionAction(JointPositionAction):
     @property
     def deployment_joint_position(self) -> torch.Tensor:
         return self._asset.data.joint_pos[:, self._joint_ids]
+
+    @property
+    def command_center(self) -> torch.Tensor:
+        """Height-conditioned joint center in deployment order."""
+
+        return self._command_center
 
     def set_runtime_impedance(
         self,
@@ -271,10 +458,133 @@ class K1ParallelJointPositionAction(JointPositionAction):
         self._parallel_target_fallback.zero_()
         current = self._asset.data.joint_pos[:, self._joint_ids]
         velocity = self._asset.data.joint_vel[:, self._joint_ids]
+        posture_height_condition = None
+        residual_height_condition = None
+        if self._height_command is not None:
+            commanded_height = self._height_command.target_height
+            posture_blend = self.cfg.height_posture_measured_blend
+            residual_blend = self.cfg.height_residual_measured_blend
+            if (
+                posture_blend > 0.0
+                or residual_blend > 0.0
+                or self.cfg.height_residual_conditioning_maximum
+            ):
+                measured_height = self._height_command.measured_height
+                measured_height = torch.where(
+                    torch.isfinite(measured_height),
+                    measured_height,
+                    commanded_height,
+                )
+                posture_height_condition = torch.lerp(
+                    commanded_height,
+                    measured_height,
+                    posture_blend,
+                )
+                residual_height_condition = torch.lerp(
+                    commanded_height,
+                    measured_height,
+                    residual_blend,
+                )
+                if self.cfg.height_residual_conditioning_maximum:
+                    residual_height_condition = torch.maximum(
+                        commanded_height,
+                        measured_height,
+                    )
+            else:
+                posture_height_condition = commanded_height
+                residual_height_condition = commanded_height
         if self.cfg.relative_to_current:
             center = current
         elif self.cfg.reference_command_name is None:
             center = self._center
+            if (
+                self._height_posture_high_center is not None
+                and self._height_posture_center is not None
+            ):
+                posture_minimum, posture_maximum = self.cfg.height_posture_range
+                low_center = self._center + self.cfg.height_posture_blend * (
+                    self._height_posture_center - self._center
+                )
+                if self.cfg.height_posture_phase_knots is not None:
+                    knots = self.cfg.height_posture_phase_knots
+                    posture_phase = torch.full_like(
+                        posture_height_condition,
+                        float(knots[0][1]),
+                    )
+                    for (start_height, start_phase), (end_height, end_phase) in zip(
+                        knots, knots[1:]
+                    ):
+                        segment_phase = float(start_phase) + torch.clamp(
+                            (posture_height_condition - float(start_height))
+                            / (float(end_height) - float(start_height)),
+                            0.0,
+                            1.0,
+                        ) * (float(end_phase) - float(start_phase))
+                        posture_phase = torch.where(
+                            posture_height_condition >= float(start_height),
+                            segment_phase,
+                            posture_phase,
+                        )
+                else:
+                    posture_phase = torch.clamp(
+                        (posture_height_condition - posture_minimum)
+                        / (posture_maximum - posture_minimum),
+                        0.0,
+                        1.0,
+                    ).pow(self.cfg.height_posture_exponent)
+                center = low_center + posture_phase.unsqueeze(-1) * (
+                    self._height_posture_high_center - low_center
+                )
+                if (
+                    self.cfg.height_posture_phase_knots is None
+                    and self.cfg.height_posture_low_handoff_height is not None
+                ):
+                    handoff_height = self.cfg.height_posture_low_handoff_height
+                    handoff_phase = (
+                        (handoff_height - posture_minimum)
+                        / (posture_maximum - posture_minimum)
+                    ) ** self.cfg.height_posture_exponent
+                    handoff_center = low_center + handoff_phase * (
+                        self._height_posture_high_center - low_center
+                    )
+                    low_phase = torch.clamp(
+                        (posture_height_condition - posture_minimum)
+                        / (handoff_height - posture_minimum),
+                        0.0,
+                        1.0,
+                    ).pow(self.cfg.height_posture_low_exponent)
+                    low_segment_center = low_center + low_phase.unsqueeze(-1) * (
+                        handoff_center - low_center
+                    )
+                    center = torch.where(
+                        (posture_height_condition < handoff_height).unsqueeze(-1),
+                        low_segment_center,
+                        center,
+                    )
+            elif self._height_posture_high_center is not None:
+                posture_minimum, posture_maximum = self.cfg.height_posture_range
+                posture_phase = torch.clamp(
+                    (posture_height_condition - posture_minimum)
+                    / (posture_maximum - posture_minimum),
+                    0.0,
+                    1.0,
+                ).pow(self.cfg.height_posture_exponent)
+                posture_phase *= self.cfg.height_posture_blend
+                center = self._center + posture_phase.unsqueeze(-1) * (
+                    self._height_posture_high_center - self._center
+                )
+            elif self._height_posture_center is not None:
+                posture_minimum, posture_maximum = self.cfg.height_posture_range
+                posture_phase = torch.clamp(
+                    (posture_maximum - posture_height_condition)
+                    / (posture_maximum - posture_minimum),
+                    0.0,
+                    1.0,
+                ).pow(self.cfg.height_posture_exponent)
+                posture_phase *= self.cfg.height_posture_blend
+                center = self._center + posture_phase.unsqueeze(-1) * (
+                    self._height_posture_center - self._center
+                )
         else:
             command = self._env.command_manager.get_term(self.cfg.reference_command_name)
             center = command.joint_pos[:, self._joint_ids]
@@ -285,6 +595,7 @@ class K1ParallelJointPositionAction(JointPositionAction):
             center,
             self._center,
         )
+        self._command_center.copy_(center.expand_as(self._command_center))
         nonfinite |= self._pending_nonfinite_policy_input
         self._pending_nonfinite_policy_input.zero_()
         actions = torch.where(
@@ -304,6 +615,57 @@ class K1ParallelJointPositionAction(JointPositionAction):
             delta_minimum=delta_minimum,
             delta_maximum=delta_maximum,
         )
+        if self._height_command is not None and self._height_residual_indexes is not None:
+            fade_start, fade_end = self.cfg.height_residual_fade_range
+            phase = torch.clamp(
+                (fade_end - residual_height_condition) / (fade_end - fade_start),
+                0.0,
+                1.0,
+            )
+            smooth_phase = phase * phase * (3.0 - 2.0 * phase)
+            base_residual_scale = self.cfg.height_residual_minimum_scale + (
+                self.cfg.height_residual_base_maximum_scale
+                - self.cfg.height_residual_minimum_scale
+            ) * smooth_phase
+            delta[:, self._height_residual_indexes] *= base_residual_scale.unsqueeze(-1)
+            if (
+                self._height_residual_amplify_indexes is not None
+                and self._height_residual_amplify_indexes.numel() > 0
+            ):
+                amplified_residual_scale = self.cfg.height_residual_minimum_scale + (
+                    self.cfg.height_residual_maximum_scale
+                    - self.cfg.height_residual_minimum_scale
+                ) * smooth_phase
+                amplification = amplified_residual_scale / base_residual_scale
+                if self.cfg.height_residual_handoff_range is not None:
+                    handoff_start, handoff_end = self.cfg.height_residual_handoff_range
+                    handoff_phase = torch.clamp(
+                        (handoff_end - residual_height_condition)
+                        / (handoff_end - handoff_start),
+                        0.0,
+                        1.0,
+                    )
+                    handoff_smooth_phase = handoff_phase * handoff_phase * (
+                        3.0 - 2.0 * handoff_phase
+                    )
+                    handoff_scale = 1.0 + (
+                        self.cfg.height_residual_handoff_minimum_scale - 1.0
+                    ) * handoff_smooth_phase
+                    amplification *= handoff_scale
+                delta[:, self._height_residual_amplify_indexes] *= amplification.unsqueeze(-1)
+            if self.cfg.height_residual_deep_handoff_range is not None:
+                deep_start, deep_end = self.cfg.height_residual_deep_handoff_range
+                deep_phase = torch.clamp(
+                    (deep_end - residual_height_condition)
+                    / (deep_end - deep_start),
+                    0.0,
+                    1.0,
+                )
+                deep_smooth_phase = deep_phase * deep_phase * (3.0 - 2.0 * deep_phase)
+                deep_scale = 1.0 + (
+                    self.cfg.height_residual_deep_handoff_minimum_scale - 1.0
+                ) * deep_smooth_phase
+                delta[:, self._height_residual_deep_handoff_indexes] *= deep_scale.unsqueeze(-1)
         target = torch.clamp(
             center + delta,
             self._minimum,
@@ -330,6 +692,33 @@ class K1ParallelJointPositionAction(JointPositionAction):
         )
         projection_reduction = torch.zeros(self.num_envs, device=self.device)
 
+        if self._position_target_velocity_limit is not None:
+            initial_target = (
+                target
+                if self.cfg.position_target_velocity_limit_initialize_from_target
+                else current
+            )
+            previous_target = torch.where(
+                self._rate_limit_initialized.unsqueeze(-1),
+                self._last_rate_limited_target,
+                initial_target,
+            )
+            maximum_step = self._position_target_velocity_limit * self._env.step_dt
+            limited_target = previous_target + torch.clamp(
+                target - previous_target,
+                -maximum_step,
+                maximum_step,
+            )
+            if self.cfg.position_target_velocity_limit_warmup_steps > 0:
+                warmup = (
+                    self._rate_limit_step_count
+                    < self.cfg.position_target_velocity_limit_warmup_steps
+                )
+                target = torch.where(warmup.unsqueeze(-1), target, limited_target)
+            else:
+                target = limited_target
+            self._rate_limit_step_count += 1
+
         # Match motion FDR's per-cycle position-error clamp before the low-level PD loop.
         error_limit = self._torque_limit / self._stiffness
         target = current + torch.clamp(target - current, -error_limit, error_limit)
@@ -337,6 +726,8 @@ class K1ParallelJointPositionAction(JointPositionAction):
         if self._parallel is None:
             self._processed_actions = target
             self._target_reduction = torch.linalg.vector_norm(requested_target - target, dim=-1)
+            self._last_rate_limited_target.copy_(target)
+            self._rate_limit_initialized.fill_(True)
             return
 
         for foot, indexes in enumerate(self._ankle_pairs):
@@ -470,6 +861,8 @@ class K1ParallelJointPositionAction(JointPositionAction):
 
         self._processed_actions = target
         self._target_reduction = projection_reduction + torch.linalg.vector_norm(requested_target - target, dim=-1)
+        self._last_rate_limited_target.copy_(target)
+        self._rate_limit_initialized.fill_(True)
 
     def reset(self, env_ids=None) -> None:
         super().reset(env_ids)
@@ -482,6 +875,10 @@ class K1ParallelJointPositionAction(JointPositionAction):
         self._joint_limit_braking[env_ids] = False
         self._joint_limit_target_reduction[env_ids] = 0.0
         self._pending_nonfinite_policy_input[env_ids] = False
+        self._last_rate_limited_target[env_ids] = 0.0
+        self._rate_limit_initialized[env_ids] = False
+        self._rate_limit_step_count[env_ids] = 0
+        self._command_center[env_ids] = self._center
         if self._parallel is not None:
             self._last_feasible_ankle_target[env_ids] = self._parallel.serial_zero.to(
                 dtype=torch.float32
@@ -499,6 +896,7 @@ class K1ParallelJointPositionActionCfg(JointPositionActionCfg):
     position_maximum: list[float] = MISSING
     position_center: list[float] | None = None
     position_scale: list[float] | None = None
+    allow_position_scale_beyond_static_center: bool = False
     stiffness: list[float] = MISSING
     damping: list[float] = MISSING
     command_torque_limit: list[float] = MISSING
@@ -508,6 +906,32 @@ class K1ParallelJointPositionActionCfg(JointPositionActionCfg):
     normalize_input: bool = True
     position_target_margin: float = 0.0
     position_braking_horizon_s: float = 0.0
+    position_target_velocity_limit: float | list[float] | None = None
+    position_target_velocity_limit_initialize_from_target: bool = False
+    position_target_velocity_limit_warmup_steps: int = 0
+    height_command_name: str | None = None
+    height_residual_fade_joint_names: list[str] | None = None
+    height_residual_amplify_joint_names: list[str] | None = None
+    height_residual_fade_range: tuple[float, float] | None = None
+    height_residual_minimum_scale: float = 1.0
+    height_residual_base_maximum_scale: float = 1.0
+    height_residual_maximum_scale: float = 1.0
+    height_residual_handoff_range: tuple[float, float] | None = None
+    height_residual_handoff_minimum_scale: float = 1.0
+    height_residual_deep_handoff_range: tuple[float, float] | None = None
+    height_residual_deep_handoff_minimum_scale: float = 1.0
+    height_residual_deep_handoff_joint_names: list[str] | None = None
+    height_posture_measured_blend: float = 0.0
+    height_residual_measured_blend: float = 0.0
+    height_residual_conditioning_maximum: bool = False
+    height_posture_center: list[float] | None = None
+    height_posture_high_center: list[float] | None = None
+    height_posture_range: tuple[float, float] = (0.0, 1.0)
+    height_posture_exponent: float = 1.0
+    height_posture_phase_knots: list[tuple[float, float]] | None = None
+    height_posture_low_handoff_height: float | None = None
+    height_posture_low_exponent: float = 1.0
+    height_posture_blend: float = 0.0
 
 
 @configclass

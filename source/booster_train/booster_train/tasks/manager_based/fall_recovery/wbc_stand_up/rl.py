@@ -39,11 +39,32 @@ class RslRlL2C2Cfg:
 
 
 @configclass
+class RslRlActorMeanBoundCfg:
+    action_indices: tuple[int, ...] = ()
+    soft_limit: float = 3.5
+    loss_coefficient: float = 0.1
+
+
+@configclass
+class RslRlActorHeightResponseCfg:
+    action_indices: tuple[int, ...] = ()
+    target_action_delta: tuple[float, ...] = ()
+    low_height: float = 0.68
+    high_height: float = 0.72
+    command_history_width: int = 5
+    loss_coefficient: float = 0.1
+
+
+@configclass
 class WbcRslRlPpoAlgorithmCfg(RslRlPpoAlgorithmCfg):
     max_learning_rate: float = 1.0e-2
     value_loss_huber_delta: float | None = None
+    policy_kl_coefficient: float = 0.0
+    policy_kl_max: float | None = None
     l2c2_cfg: RslRlL2C2Cfg | None = None
     reward_normalization_cfg: RslRlRewardNormalizationCfg | None = None
+    actor_mean_bound_cfg: RslRlActorMeanBoundCfg | None = None
+    actor_height_response_cfg: RslRlActorHeightResponseCfg | None = None
 
 
 class WbcStandUpVecEnvWrapper(RslRlVecEnvWrapper):

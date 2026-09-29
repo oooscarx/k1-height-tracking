@@ -11,6 +11,10 @@ WBC-AGILE Stand-Up task:
 - Return-variance reward normalization, including checkpoint persistence.
 - Value bootstrapping plus normalized sigma penalties/bonuses for explicitly
   classified bad/good terminations.
+- Optional exact Gaussian policy-KL regularization for low-noise continuation
+  runs where auxiliary actor losses can otherwise bypass PPO ratio clipping.
+- Optional post-update actor projection onto a configured rollout-policy KL
+  trust region while leaving critic learning untouched.
 
 Those changes are derived from
 [NVIDIA WBC-AGILE](https://github.com/nvidia-isaac/WBC-AGILE), whose additions

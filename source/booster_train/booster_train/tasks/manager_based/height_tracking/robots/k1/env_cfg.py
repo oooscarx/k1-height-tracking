@@ -256,6 +256,16 @@ class ActionsCfg:
         normalize_input=False,
         position_target_margin=ROBUST["position_target_margin"],
         position_braking_horizon_s=ROBUST["position_braking_horizon_s"],
+        position_target_velocity_limit=10.0,
+        height_command_name="height",
+        height_residual_fade_joint_names=JOINT_NAMES[10:],
+        height_residual_amplify_joint_names=[
+            JOINT_NAMES[index] for index in (10, 13, 14, 16, 19, 20)
+        ],
+        height_residual_fade_range=(0.66, 0.72),
+        height_residual_minimum_scale=0.90,
+        height_residual_base_maximum_scale=1.0,
+        height_residual_maximum_scale=1.0,
     )
     lift = mdp.HeightLiftActionCfg(
         asset_name="robot",
@@ -379,7 +389,7 @@ class RewardsCfg:
     forward_pitch = RewTerm(
         func=mdp.body_orientation_penalty,
         weight=-10.0,
-        params={"asset_cfg": SceneEntityCfg("robot", body_names=["Trunk"]), "axis": "pitch", "direction": "forward", "kernel": "l2"},
+        params={"asset_cfg": SceneEntityCfg("robot", body_names=["Trunk"]), "axis": "pitch", "direction": "both", "kernel": "l2"},
     )
     illegal_contacts = RewTerm(
         func=mdp.illegal_contact,

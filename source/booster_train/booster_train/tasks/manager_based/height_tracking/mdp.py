@@ -14,4 +14,5 @@ from booster_train.tasks.manager_based.fall_recovery.wbc_stand_up.reset_from_fal
 from .actions import *  # noqa: F401, F403
 from .commands import *  # noqa: F401, F403
 from .curriculums import *  # noqa: F401, F403
+from .observations import *  # noqa: F401, F403
 from .rewards import *  # noqa: F401, F403

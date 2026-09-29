@@ -19,6 +19,11 @@ PPO = load("kl_ppo_test", ROOT / "algorithms/ppo.py").PPO
 Runner = load("kl_runner_test", ROOT / "runners/on_policy_runner.py").OnPolicyRunner
 
 
+def test_adaptive_schedule_floor_respects_configured_maximum():
+    source = (ROOT / "algorithms/ppo.py").read_text()
+    assert "minimum_learning_rate = min(1e-5, self.max_learning_rate)" in source
+
+
 def make(factor=1.5, diagnostic_updates=0, regularization=False):
     torch.manual_seed(12)
     policy = ActorCritic(3, 4, 2, actor_hidden_dims=[8], critic_hidden_dims=[8])

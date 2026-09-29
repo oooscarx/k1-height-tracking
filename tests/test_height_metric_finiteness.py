@@ -33,6 +33,7 @@ def test_governed_height_metrics_ignore_nonfinite_terminated_environment() -> No
         _current_height_cmd=torch.tensor([0.4, 0.4]),
         _steps_since_resample=torch.zeros(count),
         settled=torch.ones(count, dtype=torch.bool),
+        command_stationary=torch.ones(count, dtype=torch.bool),
         governor=SimpleNamespace(
             command_age=torch.ones(count),
             at_final=torch.ones(count, dtype=torch.bool),
@@ -44,11 +45,16 @@ def test_governed_height_metrics_ignore_nonfinite_terminated_environment() -> No
         _first_success_s=torch.full((count,), -1.0),
         _episode_error_sum=torch.zeros(count),
         _episode_step_count=torch.zeros(count),
+        _episode_stationary_error_sum=torch.zeros(count),
+        _episode_stationary_success_sum=torch.zeros(count),
+        _episode_stationary_step_count=torch.zeros(count),
         _episode_high_error_sum=torch.zeros(count),
         _episode_high_success_sum=torch.zeros(count),
         _episode_high_step_count=torch.zeros(count),
         metrics={
             "height_error": torch.zeros(count),
+            "stationary_height_error": torch.zeros(count),
+            "stationary_height_success": torch.zeros(count),
             "high_height_error": torch.zeros(count),
             "high_height_success": torch.zeros(count),
         },
@@ -63,6 +69,8 @@ def test_governed_height_metrics_ignore_nonfinite_terminated_environment() -> No
     command_method("_update_metrics")(obj)
 
     assert torch.isfinite(obj.metrics["height_error"]).all()
+    assert torch.isfinite(obj.metrics["stationary_height_error"]).all()
     assert torch.isfinite(obj.metrics["high_height_error"]).all()
     torch.testing.assert_close(obj.metrics["height_error"], torch.tensor([0.1, 0.0]))
+    torch.testing.assert_close(obj.metrics["stationary_height_error"], torch.tensor([0.1, 0.0]))
     torch.testing.assert_close(obj.metrics["high_height_error"], torch.tensor([0.1, 0.0]))
